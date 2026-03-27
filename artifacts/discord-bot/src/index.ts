@@ -24,7 +24,8 @@ if (!token) {
   console.error("DISCORD_TOKEN environment variable is not set.");
   process.exit(1);
 }
-console.log(`[Bot] Token starts with: ${token.slice(0, 10)}... length: ${token.length}`);
+const parts = token.split(".");
+console.log(`[Bot] Token parts: ${parts.length}, lengths: ${parts.map(p => p.length).join(".")}, total: ${token.length}`);
 
 const client = new Client({
   intents: [
