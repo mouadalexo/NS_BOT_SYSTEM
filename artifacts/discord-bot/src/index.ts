@@ -8,7 +8,6 @@ import { createServer } from "http";
 import { registerVerificationModule } from "./modules/verification/index.js";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
-import { registerSlashCommands } from "./commands.js";
 import { registerPanelCommands } from "./panels/index.js";
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
@@ -60,7 +59,6 @@ if (!token) {
       activities: [{ name: "Night Stars", type: ActivityType.Watching }],
       status: "online",
     });
-    await registerSlashCommands(client);
     await registerPanelCommands(client);
   });
 
