@@ -118,38 +118,23 @@ export function registerPVSModule(client: Client) {
   });
 
   client.on("voiceStateUpdate", async (oldState, newState) => {
-    if (!newState.guild) return;
+    if (!oldState.channelId) return;
 
-    const guildId = newState.guild.id;
-    const config = await getConfig(guildId);
-    if (!config?.pvsCreateChannelId) return;
+    const channel = oldState.channel;
+    if (!channel || channel.type !== ChannelType.GuildVoice) return;
+    if (channel.members.size > 0) return;
 
-    const createChannelId = config.pvsCreateChannelId;
+    const voice = await db
+      .select()
+      .from(pvsVoicesTable)
+      .where(eq(pvsVoicesTable.channelId, oldState.channelId))
+      .limit(1);
 
-    if (newState.channelId === createChannelId && newState.member && !newState.member.user.bot) {
-      const createChannel = newState.guild.channels.cache.get(createChannelId);
-      const fallbackCategoryId = createChannel?.parentId ?? null;
-      const categoryId = config.pvsCategoryId ?? fallbackCategoryId;
-      await createPrivateVoice(newState.member, newState.guild, categoryId, true);
-    }
+    if (voice.length === 0) return;
 
-    if (oldState.channelId && oldState.channelId !== createChannelId) {
-      const channel = oldState.channel;
-      if (!channel || channel.type !== ChannelType.GuildVoice) return;
-      if (channel.members.size > 0) return;
-
-      const voice = await db
-        .select()
-        .from(pvsVoicesTable)
-        .where(eq(pvsVoicesTable.channelId, oldState.channelId))
-        .limit(1);
-
-      if (voice.length === 0) return;
-
-      await db.delete(pvsKeysTable).where(eq(pvsKeysTable.channelId, oldState.channelId));
-      await db.delete(pvsVoicesTable).where(eq(pvsVoicesTable.channelId, oldState.channelId));
-      await channel.delete().catch(() => {});
-    }
+    await db.delete(pvsKeysTable).where(eq(pvsKeysTable.channelId, oldState.channelId));
+    await db.delete(pvsVoicesTable).where(eq(pvsVoicesTable.channelId, oldState.channelId));
+    await channel.delete().catch(() => {});
   });
 }
 

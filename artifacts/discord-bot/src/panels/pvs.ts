@@ -15,7 +15,6 @@ import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 interface PvsPanelState {
-  createChannelId?: string;
   pvsCategoryId?: string;
   pvsManagerRoleId?: string;
 }
@@ -23,52 +22,33 @@ interface PvsPanelState {
 export const pvsPanelState = new Map<string, PvsPanelState>();
 
 function buildPvsPanelEmbed(state: PvsPanelState) {
-  const canSave = !!state.createChannelId;
-
   return new EmbedBuilder()
-    .setColor(canSave ? 0x2ecc71 : 0x9b59b6)
+    .setColor(0x9b59b6)
     .setTitle("🎙️ PVS — Private Voice System Setup")
+    .setDescription(
+      "Staff with the **PVS Manager Role** can use `+pv @member` to create a private voice room for any member."
+    )
     .addFields(
-      {
-        name: "Create Channel `required`",
-        value: state.createChannelId
-          ? `<#${state.createChannelId}>`
-          : "The voice channel members join to get their private room.",
-        inline: false,
-      },
       {
         name: "Premium Voices Category `optional`",
         value: state.pvsCategoryId
           ? `<#${state.pvsCategoryId}>`
-          : "Where private rooms are created. Defaults to the Create Channel's category.",
+          : "The category where private rooms are created.",
         inline: false,
       },
       {
         name: "PVS Manager Role `optional`",
         value: state.pvsManagerRoleId
           ? `<@&${state.pvsManagerRoleId}>`
-          : "Role that can use `+pv @member` to create rooms for others.",
+          : "Role that can use `+pv @member` to create rooms.",
         inline: false,
       }
     )
-    .setFooter({
-      text: canSave ? "Ready to save — click Save." : "Select the Create Channel to continue.",
-    });
+    .setFooter({ text: "Night Stars • PVS" });
 }
 
 function buildPvsPanelComponents(state: PvsPanelState) {
-  const canSave = !!state.createChannelId;
-
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
-    new ChannelSelectMenuBuilder()
-      .setCustomId("pp_create_channel")
-      .setPlaceholder(state.createChannelId ? "✅ Create Channel — click to change" : "Select the Create Channel (voice)...")
-      .addChannelTypes(ChannelType.GuildVoice)
-      .setMinValues(1)
-      .setMaxValues(1)
-  );
-
-  const row2 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_pvs_category")
       .setPlaceholder(state.pvsCategoryId ? "✅ Premium Voices Category — click to change" : "Premium Voices Category (optional)...")
@@ -77,7 +57,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
       .setMaxValues(1)
   );
 
-  const row3 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+  const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("pp_manager_role")
       .setPlaceholder(state.pvsManagerRoleId ? "✅ PVS Manager Role — click to change" : "PVS Manager Role (optional)...")
@@ -85,13 +65,12 @@ function buildPvsPanelComponents(state: PvsPanelState) {
       .setMaxValues(1)
   );
 
-  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("pp_save")
-      .setLabel(canSave ? "Save" : "Save (select Create Channel first)")
-      .setEmoji(canSave ? "💾" : "🔒")
-      .setStyle(canSave ? ButtonStyle.Success : ButtonStyle.Secondary)
-      .setDisabled(!canSave),
+      .setLabel("Save")
+      .setEmoji("💾")
+      .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId("pp_reset")
       .setLabel("Reset")
@@ -99,7 +78,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3];
 }
 
 export async function openPvsPanel(interaction: ButtonInteraction) {
@@ -113,7 +92,6 @@ export async function openPvsPanel(interaction: ButtonInteraction) {
 
   const existing = config[0];
   const state: PvsPanelState = {
-    createChannelId: existing?.pvsCreateChannelId ?? undefined,
     pvsCategoryId: existing?.pvsCategoryId ?? undefined,
     pvsManagerRoleId: existing?.pvsManagerRoleId ?? undefined,
   };
@@ -132,9 +110,7 @@ export async function handlePvsPanelSelect(
   const userId = interaction.user.id;
   const state = pvsPanelState.get(userId) ?? {};
 
-  if (interaction.customId === "pp_create_channel") {
-    state.createChannelId = (interaction as ChannelSelectMenuInteraction).values[0];
-  } else if (interaction.customId === "pp_pvs_category") {
+  if (interaction.customId === "pp_pvs_category") {
     state.pvsCategoryId = (interaction as ChannelSelectMenuInteraction).values[0] ?? undefined;
   } else if (interaction.customId === "pp_manager_role") {
     state.pvsManagerRoleId = (interaction as RoleSelectMenuInteraction).values[0] ?? undefined;
@@ -151,16 +127,8 @@ export async function handlePvsPanelSelect(
 export async function handlePvsPanelSave(interaction: ButtonInteraction) {
   const userId = interaction.user.id;
   const state = pvsPanelState.get(userId) ?? {};
-
-  if (!state.createChannelId) {
-    await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xe74c3c).setDescription("❌ Please select the Create Channel first.")],
-      ephemeral: true,
-    });
-    return;
-  }
-
   const guildId = interaction.guild!.id;
+
   const existing = await db
     .select()
     .from(botConfigTable)
@@ -169,15 +137,14 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
 
   if (existing.length) {
     await db.update(botConfigTable).set({
-      pvsCreateChannelId: state.createChannelId,
       pvsCategoryId: state.pvsCategoryId ?? null,
       pvsManagerRoleId: state.pvsManagerRoleId ?? null,
+      pvsCreateChannelId: null,
       updatedAt: new Date(),
     }).where(eq(botConfigTable.guildId, guildId));
   } else {
     await db.insert(botConfigTable).values({
       guildId,
-      pvsCreateChannelId: state.createChannelId,
       pvsCategoryId: state.pvsCategoryId ?? null,
       pvsManagerRoleId: state.pvsManagerRoleId ?? null,
     });
@@ -191,10 +158,9 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
         .setColor(0x2ecc71)
         .setTitle("✅ PVS Saved")
         .addFields(
-          { name: "Create Channel", value: `<#${state.createChannelId}>`, inline: true },
           {
             name: "Premium Voices Category",
-            value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "Same as Create Channel's category",
+            value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "Not set",
             inline: true,
           },
           {
