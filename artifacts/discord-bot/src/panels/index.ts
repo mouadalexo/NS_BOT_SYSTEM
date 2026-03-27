@@ -41,46 +41,53 @@ import { deployVerificationPanel } from "../modules/verification/index.js";
 
 function buildMainPanel() {
   const embed = new EmbedBuilder()
-    .setColor(0x1a1a2e)
-    .setTitle("⭐ Night Stars — Control Panel")
+    .setColor(0x2b2d31)
+    .setTitle("Night Stars — Admin Panel")
     .setDescription(
-      "Welcome to the Night Stars Bot control panel.\nSelect a system below to configure it."
+      "Use the buttons below to configure each system.\nAll changes take effect immediately."
     )
     .addFields(
       {
-        name: "🛡️ Verification System",
-        value: "Configure roles, logs channel, and categories. Post the panel in a channel.",
+        name: "① Verification",
+        value: "Set up roles, the logs channel, and post the panel in your welcome channel.",
+        inline: false,
       },
       {
-        name: "🎙️ Private Voice System (PVS)",
-        value: "Set the create channel and category for private voice rooms.",
+        name: "② Premium Voices",
+        value: "Let members create their own private voice rooms with key access control.",
+        inline: false,
       },
       {
-        name: "🎮 Call to Play (CTP)",
-        value: "Link a voice category to a game role for quick player call-outs.",
+        name: "③ Call to Play",
+        value: "Allow members in voice channels to ping their game role with a quick message.",
+        inline: false,
       }
     )
-    .setFooter({ text: "Only staff with Administrator permission can use this panel." });
+    .setFooter({ text: "Administrator access required • Night Stars Bot" });
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("panel_open_verify")
-      .setLabel("🛡️ Verification Setup")
+      .setLabel("Verification")
+      .setEmoji("🛡️")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("panel_open_pvs")
-      .setLabel("🎙️ PVS Setup")
+      .setLabel("Premium Voices")
+      .setEmoji("🎙️")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("panel_open_ctp")
-      .setLabel("🎮 CTP Setup")
+      .setLabel("Call to Play")
+      .setEmoji("🎮")
       .setStyle(ButtonStyle.Success)
   );
 
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("panel_deploy_verify")
-      .setLabel("📌 Post Verification Panel")
+      .setLabel("Post Verification Panel in a Channel")
+      .setEmoji("📌")
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -90,17 +97,17 @@ function buildMainPanel() {
 function buildDeployChannelSelect() {
   return {
     embed: new EmbedBuilder()
-      .setColor(0x1a1a2e)
+      .setColor(0x5865f2)
       .setTitle("📌 Post Verification Panel")
       .setDescription(
-        "Select the channel where the verification panel will be permanently posted.\n\n" +
-        "Members who join will need to see this channel and click **Start Verification** to submit their answers."
+        "Choose the channel where the verification panel will be posted.\n\n" +
+        "New members will see a button to start their verification — their answers go straight to your logs channel for review."
       )
-      .setFooter({ text: "The panel will be posted immediately." }),
+      .setFooter({ text: "The panel will be posted as soon as you select a channel." }),
     row: new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
       new ChannelSelectMenuBuilder()
         .setCustomId("deploy_verify_channel")
-        .setPlaceholder("Select verification channel")
+        .setPlaceholder("Select a channel...")
         .addChannelTypes(ChannelType.GuildText)
         .setMinValues(1)
         .setMaxValues(1)
@@ -114,7 +121,7 @@ export async function registerPanelCommands(client: Client) {
 
   const panelCommand = new SlashCommandBuilder()
     .setName("panel")
-    .setDescription("Open the Night Stars Bot control panel")
+    .setDescription("Open the Night Stars admin panel")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .toJSON();
 
@@ -122,16 +129,9 @@ export async function registerPanelCommands(client: Client) {
 
   for (const guild of client.guilds.cache.values()) {
     try {
-      const existing = (await rest.get(
-        Routes.applicationGuildCommands(client.user!.id, guild.id)
-      )) as { name: string }[];
-
-      const alreadyExists = existing.some((c) => c.name === "panel");
-      if (!alreadyExists) {
-        await rest.post(Routes.applicationGuildCommands(client.user!.id, guild.id), {
-          body: panelCommand,
-        });
-      }
+      await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), {
+        body: [panelCommand],
+      });
     } catch (err) {
       console.error(`Failed to register /panel for guild ${guild.name}:`, err);
     }
@@ -181,7 +181,11 @@ async function handlePanelCommand(interaction: ChatInputCommandInteraction) {
   const member = interaction.guild!.members.cache.get(interaction.user.id);
   if (!member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
-      content: "You need Administrator permission to use this.",
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setDescription("❌ You need **Administrator** permission to use this."),
+      ],
       ephemeral: true,
     });
     return;
@@ -256,10 +260,10 @@ async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInte
             .setColor(0x2ecc71)
             .setTitle("✅ Verification Panel Posted!")
             .setDescription(
-              `The verification panel has been posted in <#${channelId}>.\n\n` +
-              "Members can now click **Start Verification** to submit their answers."
+              `The panel has been posted in <#${channelId}>.\n\n` +
+              "Members will see a **Start Verification** button — once they submit, their answers appear in your logs channel for staff to review."
             )
-            .setFooter({ text: "Make sure new members can see this channel." }),
+            .setFooter({ text: "Make sure unverified members can see this channel." }),
         ],
         components: [],
       });

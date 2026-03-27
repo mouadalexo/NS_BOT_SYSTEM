@@ -20,30 +20,41 @@ interface PvsPanelState {
 export const pvsPanelState = new Map<string, PvsPanelState>();
 
 function buildPvsPanelEmbed(state: PvsPanelState) {
+  const canSave = !!state.createChannelId;
+
   return new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle("🎙️ Private Voice System — Setup")
+    .setColor(canSave ? 0x2ecc71 : 0x9b59b6)
+    .setTitle("🎙️ Premium Voices Setup")
     .setDescription(
-      "Configure the Private Voice System.\n\n" +
-      "**How it works:**\n" +
-      "• Members join the **Create Channel** → bot creates a private room for them\n" +
-      "• The room appears in the **PVS Category**\n" +
-      "• Owner manages the room with `=key`, `=rename`, etc.\n" +
-      "• Room is deleted automatically when empty."
+      "When a member joins the **Create Channel**, the bot instantly creates a private voice room for them.\n\n" +
+      "The room owner can:\n" +
+      "— `=key @user` — give or remove access\n" +
+      "— `=see keys` — list who has access\n" +
+      "— `=clear keys` — remove all access\n" +
+      "— `=rename Name` — rename their room\n\n" +
+      "The room is automatically deleted when everyone leaves."
     )
     .addFields(
       {
-        name: "🔊 Create Channel (required)",
-        value: state.createChannelId ? `<#${state.createChannelId}>` : "_Not selected_",
+        name: "Create Channel `required`",
+        value: state.createChannelId
+          ? `<#${state.createChannelId}>`
+          : "The voice channel members join to get a private room.",
         inline: true,
       },
       {
-        name: "🗂️ PVS Category (optional)",
-        value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "_Not selected_",
+        name: "Rooms Category `optional`",
+        value: state.pvsCategoryId
+          ? `<#${state.pvsCategoryId}>`
+          : "Where private rooms will appear. Defaults to same as Create Channel.",
         inline: true,
       }
     )
-    .setFooter({ text: "The Create Channel is required to enable PVS." });
+    .setFooter({
+      text: canSave
+        ? "Ready to save — click Save Configuration."
+        : "Select the Create Channel to continue.",
+    });
 }
 
 function buildPvsPanelComponents(state: PvsPanelState) {
@@ -52,7 +63,9 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_create_channel")
-      .setPlaceholder(state.createChannelId ? "✅ Create Channel selected" : "Select the Create Channel (voice)")
+      .setPlaceholder(
+        state.createChannelId ? "✅ Create Channel — click to change" : "Select the Create Channel (voice)..."
+      )
       .addChannelTypes(ChannelType.GuildVoice)
       .setMinValues(1)
       .setMaxValues(1)
@@ -61,7 +74,9 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row2 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_pvs_category")
-      .setPlaceholder(state.pvsCategoryId ? "✅ PVS Category selected" : "Select PVS Category (optional)")
+      .setPlaceholder(
+        state.pvsCategoryId ? "✅ Rooms Category — click to change" : "Rooms Category (optional)..."
+      )
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(0)
       .setMaxValues(1)
@@ -70,12 +85,14 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("pp_save")
-      .setLabel(canSave ? "💾 Save Configuration" : "💾 Save (select Create Channel first)")
+      .setLabel(canSave ? "Save Configuration" : "Save (select Create Channel first)")
+      .setEmoji(canSave ? "💾" : "🔒")
       .setStyle(canSave ? ButtonStyle.Success : ButtonStyle.Secondary)
       .setDisabled(!canSave),
     new ButtonBuilder()
       .setCustomId("pp_reset")
-      .setLabel("🔄 Reset")
+      .setLabel("Reset")
+      .setEmoji("🔄")
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -128,12 +145,18 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
   const state = pvsPanelState.get(userId) ?? {};
 
   if (!state.createChannelId) {
-    await interaction.reply({ content: "Please select the Create Channel first.", ephemeral: true });
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xe74c3c)
+          .setDescription("❌ Please select the Create Channel first."),
+      ],
+      ephemeral: true,
+    });
     return;
   }
 
   const guildId = interaction.guild!.id;
-
   const existing = await db
     .select()
     .from(botConfigTable)
@@ -160,22 +183,27 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
     embeds: [
       new EmbedBuilder()
         .setColor(0x2ecc71)
-        .setTitle("✅ Private Voice System Saved!")
+        .setTitle("✅ Premium Voices Saved")
         .addFields(
           { name: "Create Channel", value: `<#${state.createChannelId}>`, inline: true },
-          { name: "PVS Category", value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "None", inline: true }
+          {
+            name: "Rooms Category",
+            value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "Same as Create Channel",
+            inline: true,
+          }
         )
-        .setDescription("Members can now join the Create Channel to get a private voice room.")
-        .setFooter({ text: "Configuration saved successfully." }),
+        .setDescription(
+          "Members can now join the Create Channel to get their own private voice room."
+        )
+        .setFooter({ text: "Night Stars • Premium Voices" }),
     ],
     components: [],
   });
 }
 
 export async function handlePvsPanelReset(interaction: ButtonInteraction) {
-  const userId = interaction.user.id;
   const state: PvsPanelState = {};
-  pvsPanelState.set(userId, state);
+  pvsPanelState.set(interaction.user.id, state);
 
   await interaction.update({
     embeds: [buildPvsPanelEmbed(state)],
