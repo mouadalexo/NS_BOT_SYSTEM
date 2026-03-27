@@ -144,11 +144,16 @@ export async function openVerifyPanel(interaction: ButtonInteraction) {
   };
   verifyPanelState.set(userId, state);
 
-  await interaction.reply({
+  const payload = {
     embeds: [buildVerifyPanelEmbed(state)],
     components: buildVerifyPanelComponents(state),
-    ephemeral: true,
-  });
+  };
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload);
+  } else {
+    await interaction.reply({ ...payload, ephemeral: true });
+  }
 }
 
 export async function openEditQuestionsModal(interaction: ButtonInteraction) {

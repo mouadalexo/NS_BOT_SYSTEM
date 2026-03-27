@@ -187,6 +187,8 @@ export function registerVerificationModule(client: Client) {
 }
 
 async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
+  await interaction.deferReply({ ephemeral: true });
+
   const guildId = interaction.guild!.id;
   const user = interaction.user;
 
@@ -243,7 +245,7 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
     });
   }
 
-  await interaction.reply({
+  await interaction.editReply({
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
@@ -253,7 +255,6 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
         )
         .setFooter({ text: "Night Stars • Verification System" }),
     ],
-    ephemeral: true,
   });
 
   const config = await getConfig(guildId);
@@ -275,24 +276,25 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
 }
 
 async function handleVerificationAction(interaction: ButtonInteraction) {
+  await interaction.deferUpdate();
+
   const guildId = interaction.guild!.id;
   const config = await getConfig(guildId);
   if (!config) return;
 
-  const guildMember = interaction.guild!.members.cache.get(interaction.user.id);
-  if (!guildMember) return;
+  const guildMember = interaction.member;
+  const memberRoles = guildMember?.roles;
+  const roleSet = Array.isArray(memberRoles) ? memberRoles : (memberRoles as any)?.cache;
 
-  const hasVerificatorRole = config.verificatorsRoleId && guildMember.roles.cache.has(config.verificatorsRoleId);
-  const hasStaffRole = config.staffRoleId && guildMember.roles.cache.has(config.staffRoleId);
+  const hasVerificatorRole = config.verificatorsRoleId && roleSet?.has(config.verificatorsRoleId);
+  const hasStaffRole = config.staffRoleId && roleSet?.has(config.staffRoleId);
   if (!hasVerificatorRole && !hasStaffRole) {
-    await interaction.reply({
+    await interaction.followUp({
       content: "You do not have permission to use these buttons.",
       ephemeral: true,
     });
     return;
   }
-
-  await interaction.deferUpdate();
 
   const embed = interaction.message.embeds[0];
   const idField = embed?.fields?.find((f) => f.name === "ID");

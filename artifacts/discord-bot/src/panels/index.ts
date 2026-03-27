@@ -232,14 +232,15 @@ export async function registerPanelCommands(client: Client) {
 }
 
 async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
-  const member = interaction.guild!.members.cache.get(interaction.user.id);
-  if (!member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ You need **Administrator** permission to use this.")],
       ephemeral: true,
     });
     return;
   }
+
+  await interaction.deferReply({ ephemeral: true });
 
   const sub = interaction.options.getSubcommand();
 

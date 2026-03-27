@@ -71,11 +71,16 @@ export async function openStaffPanel(interaction: ButtonInteraction) {
   };
   staffPanelState.set(userId, state);
 
-  await interaction.reply({
+  const payload = {
     embeds: [buildStaffPanelEmbed(state)],
     components: buildStaffPanelComponents(state),
-    ephemeral: true,
-  });
+  };
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload);
+  } else {
+    await interaction.reply({ ...payload, ephemeral: true });
+  }
 }
 
 export async function handleStaffPanelSelect(interaction: RoleSelectMenuInteraction) {

@@ -94,9 +94,18 @@ export async function openPvsPanel(interaction: ButtonInteraction) {
   };
   pvsPanelState.set(userId, state);
 
-  await interaction.reply({
+  const payload = {
     embeds: [buildPvsPanelEmbed(state)],
     components: buildPvsPanelComponents(state),
+  };
+
+  if (interaction.deferred || interaction.replied) {
+    await interaction.editReply(payload);
+    return;
+  }
+
+  await interaction.reply({
+    ...payload,
     ephemeral: true,
   });
 }

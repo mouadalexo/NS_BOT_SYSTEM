@@ -73,8 +73,10 @@ export async function openCtpManagePanel(interaction: ButtonInteraction) {
 
   ctpManageState.set(interaction.user.id, {});
 
+  const alreadyAcknowledged = interaction.deferred || interaction.replied;
+
   if (!games.length) {
-    await interaction.reply({
+    const payload = {
       embeds: [
         new EmbedBuilder()
           .setColor(0xff0000)
@@ -90,16 +92,25 @@ export async function openCtpManagePanel(interaction: ButtonInteraction) {
             .setStyle(ButtonStyle.Success)
         ),
       ],
-      ephemeral: true,
-    });
+    };
+    if (alreadyAcknowledged) {
+      await interaction.editReply(payload);
+    } else {
+      await interaction.reply({ ...payload, ephemeral: true });
+    }
     return;
   }
 
-  await interaction.reply({
+  const payload = {
     embeds: [buildManageEmbed(games)],
     components: buildManageComponents(games),
-    ephemeral: true,
-  });
+  };
+
+  if (alreadyAcknowledged) {
+    await interaction.editReply(payload);
+  } else {
+    await interaction.reply({ ...payload, ephemeral: true });
+  }
 }
 
 function buildManageEmbed(games: Awaited<ReturnType<typeof getGuildGames>>, selected?: typeof games[0]) {
