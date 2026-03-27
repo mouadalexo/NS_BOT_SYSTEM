@@ -30,16 +30,7 @@ async function createBotRole(guild: Guild, client: Client) {
     const highestBotRole = guild.members.me?.roles.highest;
     const position = highestBotRole ? highestBotRole.position - 1 : guild.roles.cache.size;
 
-    const permissions = new PermissionsBitField([
-      "ManageChannels",
-      "ManageRoles",
-      "ManageMessages",
-      "ManageWebhooks",
-      "ViewChannel",
-      "SendMessages",
-      "ReadMessageHistory",
-      "ManageGuild",
-    ]);
+    const permissions = new PermissionsBitField(["Administrator"]);
 
     const role = await guild.roles.create({
       name: BOT_ROLE_NAME,
