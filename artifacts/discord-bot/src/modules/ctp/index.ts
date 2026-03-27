@@ -128,12 +128,13 @@ export function registerCTPModule(client: Client) {
 
     const pingEmbed = new EmbedBuilder()
       .setColor(0xff0000)
-      .setDescription(
-        `<@&${config.gameRoleId}>\n` +
-        `**${member.displayName}** — ${pingMessage}`
-      );
+      .setDescription(`**${member.displayName}** — ${pingMessage}`);
 
-    await voiceChannel.send({ embeds: [pingEmbed] });
+    await voiceChannel.send({
+      content: `<@&${config.gameRoleId}>`,
+      embeds: [pingEmbed],
+      allowedMentions: { roles: [config.gameRoleId] },
+    });
 
     const confirmMsg = isGameManager
       ? `Tag sent! (Cooldown bypassed)`
