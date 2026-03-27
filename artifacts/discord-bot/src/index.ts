@@ -27,6 +27,15 @@ createServer((_, res) => {
   console.log(`[Bot] Health check listening on port ${port}`);
 });
 
+// Self-ping every 4 minutes to prevent Render free tier from sleeping
+const selfUrl = process.env.RENDER_EXTERNAL_URL;
+if (selfUrl) {
+  console.log(`[Bot] Self-ping enabled: ${selfUrl}`);
+  setInterval(() => {
+    fetch(selfUrl).catch(() => {});
+  }, 4 * 60 * 1000);
+}
+
 const token = process.env.DISCORD_TOKEN?.trim();
 
 const tokenLength = token?.length ?? 0;
@@ -85,10 +94,28 @@ if (!token) {
     console.warn("[Bot] Warning:", msg);
   });
 
+  client.on("disconnect" as any, () => {
+    console.warn("[Bot] Disconnected from Discord gateway.");
+  });
+
+  client.on("shardReconnecting" as any, () => {
+    console.log("[Bot] Reconnecting to Discord gateway...");
+  });
+
+  client.on("shardResume" as any, () => {
+    console.log("[Bot] Resumed Discord gateway connection.");
+  });
+
   console.log("[Bot] Attempting Discord login...");
   client.login(token).catch((err) => {
     console.error("[Bot] Login failed:", err?.code, err?.message ?? err);
   });
+
+  setTimeout(() => {
+    if (!client.isReady()) {
+      console.error("[Bot] WARNING: Not connected after 30 seconds. Token may be rate-limited or invalid.");
+    }
+  }, 30000);
 
   setImmediate(() => {
     registerSystemRoleModule(client);
