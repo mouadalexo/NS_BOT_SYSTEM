@@ -16,64 +16,55 @@ createServer((_, res) => {
   res.writeHead(200);
   res.end("OK");
 }).listen(port, () => {
-  console.log(`Health check server listening on port ${port}`);
+  console.log(`[Bot] Health check listening on port ${port}`);
 });
 
 const token = process.env.DISCORD_TOKEN?.trim();
+
+console.log(`[Bot] DISCORD_TOKEN present: ${!!token}`);
+console.log(`[Bot] NODE_ENV: ${process.env.NODE_ENV}`);
+console.log(`[Bot] DATABASE_URL present: ${!!process.env.DATABASE_URL}`);
+
 if (!token) {
-  console.error("DISCORD_TOKEN is not set — bot will not connect.");
-  process.exit(1);
-}
-
-const client = new Client({
-  intents: [
-    GatewayIntentBits.Guilds,
-    GatewayIntentBits.GuildMembers,
-    GatewayIntentBits.GuildMessages,
-    GatewayIntentBits.MessageContent,
-    GatewayIntentBits.GuildVoiceStates,
-    GatewayIntentBits.DirectMessages,
-  ],
-  partials: [
-    Partials.Channel,
-    Partials.Message,
-    Partials.GuildMember,
-  ],
-});
-
-registerVerificationModule(client);
-registerPVSModule(client);
-registerCTPModule(client);
-
-client.once("clientReady", async () => {
-  console.log(`Night Stars Bot is online as ${client.user?.tag}`);
-  console.log(`Serving ${client.guilds.cache.size} guild(s)`);
-
-  client.user?.setPresence({
-    activities: [{ name: "Night Stars", type: ActivityType.Watching }],
-    status: "online",
+  console.error("[Bot] ERROR: DISCORD_TOKEN is not set. Bot cannot connect.");
+} else {
+  const client = new Client({
+    intents: [
+      GatewayIntentBits.Guilds,
+      GatewayIntentBits.GuildMembers,
+      GatewayIntentBits.GuildMessages,
+      GatewayIntentBits.MessageContent,
+      GatewayIntentBits.GuildVoiceStates,
+      GatewayIntentBits.DirectMessages,
+    ],
+    partials: [
+      Partials.Channel,
+      Partials.Message,
+      Partials.GuildMember,
+    ],
   });
 
-  await registerSlashCommands(client);
-  await registerPanelCommands(client);
-});
+  registerVerificationModule(client);
+  registerPVSModule(client);
+  registerCTPModule(client);
 
-client.on("error", (err) => {
-  console.error("Discord client error:", err);
-});
+  client.once("clientReady", async () => {
+    console.log(`[Bot] Online as ${client.user?.tag}`);
+    console.log(`[Bot] Serving ${client.guilds.cache.size} guild(s)`);
+    client.user?.setPresence({
+      activities: [{ name: "Night Stars", type: ActivityType.Watching }],
+      status: "online",
+    });
+    await registerSlashCommands(client);
+    await registerPanelCommands(client);
+  });
 
-async function connectWithRetry(retryDelay = 30000) {
-  try {
-    await client.login(token);
-  } catch (err: any) {
-    if (err?.code === "TokenInvalid") {
-      console.error("Token is invalid — update DISCORD_TOKEN and redeploy.");
-    } else {
-      console.error("Login failed:", err?.message ?? err);
-      console.log(`Retrying in ${retryDelay / 1000}s...`);
-      setTimeout(() => connectWithRetry(retryDelay), retryDelay);
-    }
-  }
+  client.on("error", (err) => {
+    console.error("[Bot] Client error:", err);
+  });
+
+  console.log("[Bot] Attempting Discord login...");
+  client.login(token).catch((err) => {
+    console.error("[Bot] Login failed:", err?.code, err?.message ?? err);
+  });
 }
-
-connectWithRetry();

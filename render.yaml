@@ -10,8 +10,8 @@ services:
     runtime: node
     plan: free
     rootDir: .
-    buildCommand: npm install -g pnpm && pnpm install
-    startCommand: pnpm --filter @workspace/db run push && pnpm --filter @workspace/discord-bot run start
+    buildCommand: npm install -g pnpm && pnpm install && pnpm --filter @workspace/db run push
+    startCommand: pnpm --filter @workspace/discord-bot run start
     envVars:
       - key: DISCORD_TOKEN
         sync: false
@@ -19,5 +19,3 @@ services:
         fromDatabase:
           name: night-stars-db
           property: connectionString
-      - key: NODE_ENV
-        value: production
