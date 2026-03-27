@@ -21,7 +21,12 @@ createServer((_, res) => {
 
 const token = process.env.DISCORD_TOKEN?.trim();
 
+const tokenLength = token?.length ?? 0;
+const tokenDots = (token?.match(/\./g) ?? []).length;
 console.log(`[Bot] DISCORD_TOKEN present: ${!!token}`);
+console.log(`[Bot] DISCORD_TOKEN length: ${tokenLength} (expected ~70+)`);
+console.log(`[Bot] DISCORD_TOKEN dots: ${tokenDots} (expected 2)`);
+console.log(`[Bot] DISCORD_TOKEN prefix: ${token ? token.slice(0, 10) + "..." : "none"}`);
 console.log(`[Bot] NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`[Bot] DATABASE_URL present: ${!!process.env.DATABASE_URL}`);
 
