@@ -31,7 +31,7 @@ function buildPvsPanelEmbed(state: PvsPanelState) {
 
   return new EmbedBuilder()
     .setColor(0xff0000)
-    .setTitle("🎙️ Private Voice System")
+    .setTitle("Private Voice System")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • PVS" });
 }
@@ -40,7 +40,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_pvs_category")
-      .setPlaceholder(state.pvsCategoryId ? "✅ Premium Voices Category" : "Premium Voices Category (optional)...")
+      .setPlaceholder(state.pvsCategoryId ? "Premium Voices Category (set)" : "Premium Voices Category (optional)...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(0)
       .setMaxValues(1)
@@ -49,7 +49,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("pp_manager_role")
-      .setPlaceholder(state.pvsManagerRoleId ? "✅ PVS Manager Role" : "PVS Manager Role (optional)...")
+      .setPlaceholder(state.pvsManagerRoleId ? "PVS Manager Role (set)" : "PVS Manager Role (optional)...")
       .setMinValues(0)
       .setMaxValues(1)
   );
@@ -57,7 +57,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row3 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_waiting_room")
-      .setPlaceholder(state.pvsWaitingRoomChannelId ? "✅ Waiting Room" : "Waiting Room (optional)...")
+      .setPlaceholder(state.pvsWaitingRoomChannelId ? "Waiting Room (set)" : "Waiting Room (optional)...")
       .addChannelTypes(ChannelType.GuildVoice)
       .setMinValues(0)
       .setMaxValues(1)
@@ -67,12 +67,10 @@ function buildPvsPanelComponents(state: PvsPanelState) {
     new ButtonBuilder()
       .setCustomId("pp_save")
       .setLabel("Save")
-      .setEmoji("💾")
       .setStyle(ButtonStyle.Success),
     new ButtonBuilder()
       .setCustomId("pp_reset")
       .setLabel("Reset")
-      .setEmoji("🔄")
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -159,7 +157,7 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
-        .setTitle("✅ PVS Saved")
+        .setTitle("PVS Saved")
         .setDescription(
           [
             `**Category** — ${state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "not set"}`,

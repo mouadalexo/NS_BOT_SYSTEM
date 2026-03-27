@@ -50,7 +50,7 @@ function buildVerifyPanelEmbed(state: VerifyPanelState) {
 
   return new EmbedBuilder()
     .setColor(0xff0000)
-    .setTitle("🛡️ Night Stars Verification")
+    .setTitle("Night Stars Verification")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • NSV" });
 }
@@ -61,14 +61,14 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
   const row1 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("vp_verificators_role")
-      .setPlaceholder(state.verificatorsRoleId ? "✅ Verificators Role" : "Verificators Role...")
+      .setPlaceholder(state.verificatorsRoleId ? "Verificators Role (set)" : "Verificators Role...")
       .setMinValues(1).setMaxValues(1)
   );
 
   const row2 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("vp_logs_channel")
-      .setPlaceholder(state.logsChannelId ? "✅ Logs Channel" : "Logs Channel...")
+      .setPlaceholder(state.logsChannelId ? "Logs Channel (set)" : "Logs Channel...")
       .addChannelTypes(ChannelType.GuildText)
       .setMinValues(1).setMaxValues(1)
   );
@@ -77,8 +77,9 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
     new RoleSelectMenuBuilder()
       .setCustomId("vp_roles_group")
       .setPlaceholder(
-        [state.verifiedRoleId && "✅ Verified", state.unverifiedRoleId && "✅ Unverified", state.jailRoleId && "✅ Jail"]
-          .filter(Boolean).join(" • ") || "Verified / Unverified / Jail Roles..."
+        [state.verifiedRoleId && "Verified", state.unverifiedRoleId && "Unverified", state.jailRoleId && "Jail"]
+          .filter(Boolean).join(", ") + (state.verifiedRoleId || state.unverifiedRoleId || state.jailRoleId ? " (set)" : "")
+        || "Verified / Unverified / Jail Roles..."
       )
       .setMinValues(1).setMaxValues(3)
   );
@@ -86,7 +87,7 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
   const row4 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("vp_verify_category")
-      .setPlaceholder(state.verifyCategoryId ? "✅ Verify Category" : "Verify Category (optional)...")
+      .setPlaceholder(state.verifyCategoryId ? "Verify Category (set)" : "Verify Category (optional)...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(0).setMaxValues(1)
   );
@@ -95,23 +96,19 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
     new ButtonBuilder()
       .setCustomId("vp_save")
       .setLabel("Save")
-      .setEmoji("💾")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!canSave),
     new ButtonBuilder()
       .setCustomId("vp_edit_questions")
-      .setLabel("Edit Questions")
-      .setEmoji("📝")
+      .setLabel("Questions")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("panel_deploy_verify")
       .setLabel("Post Panel")
-      .setEmoji("📌")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()
       .setCustomId("vp_reset")
       .setLabel("Reset")
-      .setEmoji("🔄")
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -206,7 +203,7 @@ export async function handleEditQuestionsSubmit(interaction: ModalSubmitInteract
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
-        .setTitle("✅ Questions Updated")
+        .setTitle("Questions Updated")
         .setDescription(questions.map((q, i) => `**Q${i + 1}** — ${q}`).join("\n"))
         .setFooter({ text: "Night Stars • NSV" }),
     ],
@@ -248,7 +245,7 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
 
   if (!state.verificatorsRoleId || !state.logsChannelId) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ Verificators Role and Logs Channel are required.")],
+      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("Verificators Role and Logs Channel are required.")],
       ephemeral: true,
     });
     return;
@@ -287,7 +284,7 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
-        .setTitle("✅ NSV Saved")
+        .setTitle("NSV Saved")
         .setDescription(
           [
             `**Verificators Role** — <@&${state.verificatorsRoleId}>`,

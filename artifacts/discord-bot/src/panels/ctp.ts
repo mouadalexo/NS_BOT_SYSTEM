@@ -40,7 +40,7 @@ function buildCtpPanelEmbed(state: CtpPanelState) {
 
   return new EmbedBuilder()
     .setColor(0xff0000)
-    .setTitle("🎮 Call to Play")
+    .setTitle("Call to Play")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • CTP" });
 }
@@ -51,7 +51,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("cp_category")
-      .setPlaceholder(state.categoryId ? "✅ Game Category" : "Game Category...")
+      .setPlaceholder(state.categoryId ? "Game Category (set)" : "Game Category...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(1)
       .setMaxValues(1)
@@ -60,7 +60,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("cp_game_role")
-      .setPlaceholder(state.gameRoleId ? "✅ Role to ping" : "Role to ping...")
+      .setPlaceholder(state.gameRoleId ? "Role to ping (set)" : "Role to ping...")
       .setMinValues(1)
       .setMaxValues(1)
   );
@@ -68,7 +68,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row3 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("cp_output_channel")
-      .setPlaceholder(state.outputChannelId ? "✅ Output Channel" : "Output Channel (optional)...")
+      .setPlaceholder(state.outputChannelId ? "Output Channel (set)" : "Output Channel (optional)...")
       .addChannelTypes(ChannelType.GuildText)
       .setMinValues(0)
       .setMaxValues(1)
@@ -77,19 +77,16 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("cp_open_details")
-      .setLabel(state.gameName ? `Game: ${state.gameName}` : "Set Game Name & Cooldown")
-      .setEmoji("📝")
+      .setLabel(state.gameName ? `Game: ${state.gameName}` : "Game Name & Cooldown")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("cp_save")
       .setLabel("Save")
-      .setEmoji("💾")
       .setStyle(ButtonStyle.Success)
       .setDisabled(!canSave),
     new ButtonBuilder()
       .setCustomId("cp_reset")
       .setLabel("Reset")
-      .setEmoji("🔄")
       .setStyle(ButtonStyle.Danger)
   );
 
@@ -195,7 +192,7 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
 
   if (!state.categoryId || !state.gameRoleId || !state.gameName) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ Game Name, Role, and Category are required.")],
+      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("Game Name, Role and Category are required.")],
       ephemeral: true,
     });
     return;
@@ -241,7 +238,7 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
     embeds: [
       new EmbedBuilder()
         .setColor(0xff0000)
-        .setTitle("✅ CTP Saved")
+        .setTitle("CTP Saved")
         .setDescription(
           [
             `**Game** — ${state.gameName}`,
