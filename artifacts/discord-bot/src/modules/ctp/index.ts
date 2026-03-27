@@ -18,10 +18,44 @@ export function registerCTPModule(client: Client) {
     if (!member) return;
 
     const voiceChannel = member.voice.channel;
-    if (!voiceChannel) return;
+
+    if (!voiceChannel) {
+      const allConfigs = await db
+        .select()
+        .from(ctpCategoriesTable)
+        .where(and(eq(ctpCategoriesTable.guildId, message.guild.id), eq(ctpCategoriesTable.enabled, 1)));
+
+      await message.delete().catch(() => {});
+      const gameNames = allConfigs.map((c) => `**${c.gameName}**`).join(", ");
+      const notice = await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setDescription(
+              allConfigs.length
+                ? `❌ You must join a **${gameNames}** voice channel first before tagging.`
+                : "❌ You must be in a game voice channel first before tagging."
+            ),
+        ],
+      });
+      setTimeout(() => notice.delete().catch(() => {}), 6000);
+      return;
+    }
 
     const categoryId = voiceChannel.parentId;
-    if (!categoryId) return;
+
+    if (!categoryId) {
+      await message.delete().catch(() => {});
+      const notice = await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setDescription("❌ This voice channel is not set up for Call to Play."),
+        ],
+      });
+      setTimeout(() => notice.delete().catch(() => {}), 6000);
+      return;
+    }
 
     const ctpConfig = await db
       .select()
@@ -35,7 +69,28 @@ export function registerCTPModule(client: Client) {
       )
       .limit(1);
 
-    if (!ctpConfig.length) return;
+    if (!ctpConfig.length) {
+      const allConfigs = await db
+        .select()
+        .from(ctpCategoriesTable)
+        .where(and(eq(ctpCategoriesTable.guildId, message.guild.id), eq(ctpCategoriesTable.enabled, 1)));
+
+      await message.delete().catch(() => {});
+      const gameNames = allConfigs.map((c) => `**${c.gameName}**`).join(", ");
+      const notice = await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setDescription(
+              allConfigs.length
+                ? `❌ You must join a ${gameNames} voice channel first before tagging.`
+                : "❌ This voice channel is not set up for Call to Play."
+            ),
+        ],
+      });
+      setTimeout(() => notice.delete().catch(() => {}), 6000);
+      return;
+    }
 
     const config = ctpConfig[0];
     const now = new Date();
@@ -60,17 +115,19 @@ export function registerCTPModule(client: Client) {
         const seconds = remaining % 60;
         const timeStr = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
 
-        const cooldownEmbed = new EmbedBuilder()
-          .setColor(0xe74c3c)
-          .setTitle("⏳ Call to Play — Cooldown Active")
-          .setDescription(
-            `The **${config.gameName}** call was used recently.\n\n` +
-            `Please wait **${timeStr}** before calling again.`
-          )
-          .setFooter({ text: `Cooldown: ${config.cooldownSeconds}s • Night Stars CTP` });
-
         await message.delete().catch(() => {});
-        const notice = await message.channel.send({ embeds: [cooldownEmbed] });
+        const notice = await message.channel.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xe74c3c)
+              .setTitle("⏳ Cooldown Active")
+              .setDescription(
+                `The **${config.gameName}** tag was used recently.\n` +
+                `You can re-tag in **${timeStr}**.`
+              )
+              .setFooter({ text: `Cooldown: ${config.cooldownSeconds}s • Night Stars CTP` }),
+          ],
+        });
         setTimeout(() => notice.delete().catch(() => {}), 8000);
         return;
       }
@@ -94,16 +151,26 @@ export function registerCTPModule(client: Client) {
       .setFooter({ text: `Night Stars CTP • Cooldown resets in ${config.cooldownSeconds}s` })
       .setTimestamp();
 
-    let targetChannel: TextChannel;
+    let outputChannel: TextChannel;
     if (config.outputChannelId) {
       const ch = message.guild.channels.cache.get(config.outputChannelId);
-      targetChannel = (ch?.type === ChannelType.GuildText ? ch : message.channel) as TextChannel;
+      outputChannel = (ch?.type === ChannelType.GuildText ? ch : message.channel) as TextChannel;
     } else {
-      targetChannel = message.channel as TextChannel;
+      outputChannel = message.channel as TextChannel;
     }
 
     await message.delete().catch(() => {});
-    await targetChannel.send({ embeds: [pingEmbed] });
+    await outputChannel.send({ embeds: [pingEmbed] });
+
+    const confirmChannel = message.channel as TextChannel;
+    const confirm = await confirmChannel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x2ecc71)
+          .setDescription(`✅ Tag sent! You can re-tag after **${config.cooldownSeconds}s**.`),
+      ],
+    });
+    setTimeout(() => confirm.delete().catch(() => {}), 6000);
 
     if (cooldownRecord.length) {
       await db

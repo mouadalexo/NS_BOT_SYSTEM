@@ -179,16 +179,24 @@ export async function registerPanelCommands(client: Client) {
 
   const rest = new REST().setToken(token);
 
-  for (const guild of client.guilds.cache.values()) {
+  const registerForGuild = async (guildId: string, guildName: string) => {
     try {
-      await rest.put(Routes.applicationGuildCommands(client.user!.id, guild.id), {
+      await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
         body: [setupCommand, pvsCommand, ctpCommand],
       });
-      console.log(`Registered slash commands for guild: ${guild.name}`);
+      console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
-      console.error(`Failed to register commands for guild ${guild.name}:`, err);
+      console.error(`Failed to register commands for guild ${guildName}:`, err);
     }
+  };
+
+  for (const guild of client.guilds.cache.values()) {
+    await registerForGuild(guild.id, guild.name);
   }
+
+  client.on("guildCreate", async (guild) => {
+    await registerForGuild(guild.id, guild.name);
+  });
 
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.guild) return;
