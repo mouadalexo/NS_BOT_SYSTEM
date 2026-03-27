@@ -124,6 +124,7 @@ function buildPvsInfoEmbed() {
     .setDescription("Commands for private voice room owners:")
     .addFields(
       { name: "`=key @user`", value: "Give or remove a member's access to your room.", inline: false },
+      { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
       { name: "`=see keys`", value: "List all members who have access to your room.", inline: false },
       { name: "`=clear keys`", value: "Remove all keys — your room becomes fully private.", inline: false },
       { name: "`=name NewName`", value: "Rename your voice room.", inline: false },

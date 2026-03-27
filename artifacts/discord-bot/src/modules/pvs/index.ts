@@ -116,6 +116,8 @@ export function registerPVSModule(client: Client) {
       await handleSeeKeys(message, member);
     } else if (content.toLowerCase().startsWith("name ")) {
       await handleRename(message, member, content.slice(5).trim());
+    } else if (content.toLowerCase().startsWith("pull ")) {
+      await handlePull(message, member, content.slice(5).trim());
     }
   });
 
@@ -177,6 +179,7 @@ async function createPrivateVoice(
       )
       .addFields(
         { name: "`=key @user`", value: "Give or remove access for a member.", inline: false },
+        { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
         { name: "`=see keys`", value: "See who currently has access.", inline: false },
         { name: "`=clear keys`", value: "Remove all keys — room goes fully private.", inline: false },
         { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
@@ -264,6 +267,7 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
       )
       .addFields(
         { name: "`=key @user`", value: "Give or remove access for a member.", inline: false },
+        { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
         { name: "`=see keys`", value: "See who currently has access.", inline: false },
         { name: "`=clear keys`", value: "Remove all keys — room goes fully private.", inline: false },
         { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
@@ -432,4 +436,51 @@ async function handleRename(message: Message, member: GuildMember, newName: stri
 
   await vc.setName(newName).catch(() => {});
   await sendTemp(message, successEmbed(`✏️ Your voice room has been renamed to **${newName}**.`));
+}
+
+async function handlePull(message: Message, member: GuildMember, args: string) {
+  const vc = await getOwnerVoice(member);
+  if (!vc) {
+    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    return;
+  }
+
+  const config = await getConfig(message.guild!.id);
+  if (!config?.pvsWaitingRoomChannelId) {
+    await sendTemp(message, errorEmbed("No waiting room has been configured for this server."));
+    return;
+  }
+
+  const targetId = args.replace(/[<@!>]/g, "").trim();
+  if (!targetId) {
+    await sendTemp(message, errorEmbed("Please mention a member to pull. Usage: `=pull @member`"));
+    return;
+  }
+
+  if (targetId === member.id) {
+    await sendTemp(message, errorEmbed("You can't pull yourself."));
+    return;
+  }
+
+  const target = await message.guild!.members.fetch(targetId).catch(() => null);
+  if (!target) {
+    await sendTemp(message, errorEmbed("Member not found."));
+    return;
+  }
+
+  if (target.voice.channelId !== config.pvsWaitingRoomChannelId) {
+    await sendTemp(message, errorEmbed(`<@${targetId}> is not in the waiting room.`));
+    return;
+  }
+
+  await target.voice.setChannel(vc).catch(() => {});
+  await message.delete().catch(() => {});
+
+  await vc.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x2ecc71)
+        .setDescription(`🚪 <@${member.id}> pulled <@${targetId}> in from the waiting room.`),
+    ],
+  }).catch(() => {});
 }
