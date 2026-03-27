@@ -26,6 +26,8 @@ interface VerifyPanelState {
   verifiedRoleId?: string;
   unverifiedRoleId?: string;
   jailRoleId?: string;
+  embedTitle?: string;
+  embedDescription?: string;
 }
 
 export const verifyPanelState = new Map<string, VerifyPanelState>();
@@ -103,6 +105,10 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
       .setLabel("Questions")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
+      .setCustomId("vp_edit_embed")
+      .setLabel(state.embedTitle ? "Embed (set)" : "Embed")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
       .setCustomId("panel_deploy_verify")
       .setLabel("Post Panel")
       .setStyle(ButtonStyle.Secondary),
@@ -133,6 +139,8 @@ export async function openVerifyPanel(interaction: ButtonInteraction) {
     verifiedRoleId: existing?.verifiedRoleId ?? undefined,
     unverifiedRoleId: existing?.unverifiedRoleId ?? undefined,
     jailRoleId: existing?.jailRoleId ?? undefined,
+    embedTitle: existing?.panelEmbedTitle ?? undefined,
+    embedDescription: existing?.panelEmbedDescription ?? undefined,
   };
   verifyPanelState.set(userId, state);
 
@@ -208,6 +216,72 @@ export async function handleEditQuestionsSubmit(interaction: ModalSubmitInteract
         .setFooter({ text: "Night Stars • NSV" }),
     ],
     ephemeral: true,
+  });
+}
+
+export async function openEmbedCustomizeModal(interaction: ButtonInteraction) {
+  const state = verifyPanelState.get(interaction.user.id) ?? {};
+
+  const modal = new ModalBuilder()
+    .setCustomId("vp_embed_modal")
+    .setTitle("Customize Verification Panel Embed");
+
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("vp_embed_title")
+        .setLabel("Embed Title")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(100)
+        .setValue(state.embedTitle ?? "Night Stars — Verification")
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("vp_embed_desc")
+        .setLabel("Description (use <:name:id> for server emojis)")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(2000)
+        .setValue(
+          state.embedDescription ??
+          "Welcome to **Night Stars**!\n\nClick the button below and answer the questions.\nA staff member will review your answers and verify you shortly."
+        )
+    )
+  );
+
+  await interaction.showModal(modal);
+}
+
+export async function handleEmbedCustomizeSubmit(interaction: ModalSubmitInteraction) {
+  const userId = interaction.user.id;
+  const state = verifyPanelState.get(userId) ?? {};
+
+  state.embedTitle = interaction.fields.getTextInputValue("vp_embed_title").trim();
+  state.embedDescription = interaction.fields.getTextInputValue("vp_embed_desc").trim();
+
+  verifyPanelState.set(userId, state);
+
+  const guildId = interaction.guild!.id;
+  const existing = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
+
+  if (existing.length) {
+    await db.update(botConfigTable).set({
+      panelEmbedTitle: state.embedTitle,
+      panelEmbedDescription: state.embedDescription,
+      updatedAt: new Date(),
+    }).where(eq(botConfigTable.guildId, guildId));
+  } else {
+    await db.insert(botConfigTable).values({
+      guildId,
+      panelEmbedTitle: state.embedTitle,
+      panelEmbedDescription: state.embedDescription,
+    });
+  }
+
+  await interaction.update({
+    embeds: [buildVerifyPanelEmbed(state)],
+    components: buildVerifyPanelComponents(state),
   });
 }
 

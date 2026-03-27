@@ -40,17 +40,17 @@ async function getQuestions(guildId: string): Promise<string[]> {
   return DEFAULT_QUESTIONS;
 }
 
-export function buildVerificationPanelEmbed() {
+export function buildVerificationPanelEmbed(title?: string | null, description?: string | null) {
   return new EmbedBuilder()
     .setColor(0xff0000)
-    .setTitle("Night Stars — Verification")
+    .setTitle(title || "Night Stars — Verification")
     .setDescription(
+      description ||
       "Welcome to **Night Stars**!\n\n" +
       "Click the button below and answer the questions.\n" +
       "A staff member will review your answers and verify you shortly."
     )
-    .setFooter({ text: "Night Stars • Verification System" })
-    .setTimestamp();
+    .setFooter({ text: "Night Stars • Verification System" });
 }
 
 function buildStartButton() {
@@ -153,8 +153,9 @@ async function getConfig(guildId: string) {
 }
 
 export async function deployVerificationPanel(channel: TextChannel) {
+  const config = await getConfig(channel.guild.id);
   await channel.send({
-    embeds: [buildVerificationPanelEmbed()],
+    embeds: [buildVerificationPanelEmbed(config?.panelEmbedTitle, config?.panelEmbedDescription)],
     components: [buildStartButton()],
   });
 }

@@ -25,6 +25,8 @@ import {
   handleVerifyPanelReset,
   openEditQuestionsModal,
   handleEditQuestionsSubmit,
+  openEmbedCustomizeModal,
+  handleEmbedCustomizeSubmit,
 } from "./verification.js";
 import {
   openPvsPanel,
@@ -187,7 +189,7 @@ export async function registerPanelCommands(client: Client) {
     if (interaction.isButton()) {
       const panelIds = [
         "panel_deploy_verify",
-        "vp_save", "vp_reset", "vp_edit_questions",
+        "vp_save", "vp_reset", "vp_edit_questions", "vp_edit_embed",
         "pp_save", "pp_reset",
         "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
         "cp_open_details", "cp_save", "cp_reset",
@@ -221,6 +223,8 @@ export async function registerPanelCommands(client: Client) {
         try { await handleCtpDetailsModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP modal error:", err); }
       } else if (interaction.customId === "vp_questions_modal") {
         try { await handleEditQuestionsSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("NSV questions modal error:", err); }
+      } else if (interaction.customId === "vp_embed_modal") {
+        try { await handleEmbedCustomizeSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("NSV embed modal error:", err); }
       }
     }
   });
@@ -261,6 +265,8 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleVerifyPanelReset(interaction);
     } else if (customId === "vp_edit_questions") {
       await openEditQuestionsModal(interaction);
+    } else if (customId === "vp_edit_embed") {
+      await openEmbedCustomizeModal(interaction);
     } else if (customId === "pp_save") {
       await handlePvsPanelSave(interaction);
     } else if (customId === "pp_reset") {
