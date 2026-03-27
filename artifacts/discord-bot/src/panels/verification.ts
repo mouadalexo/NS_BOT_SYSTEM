@@ -104,6 +104,11 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
       .setEmoji("📝")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
+      .setCustomId("panel_deploy_verify")
+      .setLabel("Post Panel")
+      .setEmoji("📌")
+      .setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder()
       .setCustomId("vp_reset")
       .setLabel("Reset")
       .setEmoji("🔄")

@@ -41,42 +41,6 @@ import {
 } from "./ctp.js";
 import { deployVerificationPanel } from "../modules/verification/index.js";
 
-function buildMainPanel() {
-  const embed = new EmbedBuilder()
-    .setColor(0xff0000)
-    .setTitle("Night Stars — Admin Panel")
-    .setDescription("**NSV** — Verification  •  **PVS** — Private Voice  •  **CTP** — Call to Play")
-    .setFooter({ text: "Night Stars Bot" });
-
-  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("panel_open_verify")
-      .setLabel("NSV")
-      .setEmoji("🛡️")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder()
-      .setCustomId("panel_open_pvs")
-      .setLabel("PVS")
-      .setEmoji("🎙️")
-      .setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId("panel_open_ctp")
-      .setLabel("CTP")
-      .setEmoji("🎮")
-      .setStyle(ButtonStyle.Success)
-  );
-
-  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId("panel_deploy_verify")
-      .setLabel("Post Verification Panel in a Channel")
-      .setEmoji("📌")
-      .setStyle(ButtonStyle.Danger)
-  );
-
-  return { embed, rows: [row1, row2] };
-}
-
 function buildDeployChannelSelect() {
   return {
     embed: new EmbedBuilder()
@@ -129,7 +93,7 @@ function buildCtpInfoEmbed() {
       },
       {
         name: "Cooldown",
-        value: "Each category has its own cooldown (set in `/setup`). If active, the bot will tell you how long to wait.",
+        value: "Each category has its own cooldown. If active, the bot tells you how long to wait.",
         inline: false,
       },
     )
@@ -142,8 +106,17 @@ export async function registerPanelCommands(client: Client) {
 
   const setupCommand = new SlashCommandBuilder()
     .setName("setup")
-    .setDescription("Open the Night Stars admin panel")
+    .setDescription("Configure Night Stars bot systems")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .addSubcommand((sub) =>
+      sub.setName("verification").setDescription("Set up the Night Stars Verification system (NSV)")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("premium").setDescription("Set up the Private Voice System (PVS)")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("ping").setDescription("Set up the Call to Play system (CTP)")
+    )
     .toJSON();
 
   const pvsCommand = new SlashCommandBuilder()
@@ -181,11 +154,12 @@ export async function registerPanelCommands(client: Client) {
     if (!interaction.guild) return;
 
     if (interaction.isChatInputCommand()) {
-      if (interaction.commandName === "setup") {
+      const name = interaction.commandName;
+      if (name === "setup") {
         await handleSetupCommand(interaction as ChatInputCommandInteraction);
-      } else if (interaction.commandName === "pvs") {
+      } else if (name === "pvs") {
         await interaction.reply({ embeds: [buildPvsInfoEmbed()], ephemeral: true });
-      } else if (interaction.commandName === "ctp") {
+      } else if (name === "ctp") {
         await interaction.reply({ embeds: [buildCtpInfoEmbed()], ephemeral: true });
       }
       return;
@@ -193,7 +167,7 @@ export async function registerPanelCommands(client: Client) {
 
     if (interaction.isButton()) {
       const panelIds = [
-        "panel_open_verify", "panel_open_pvs", "panel_open_ctp", "panel_deploy_verify",
+        "panel_deploy_verify",
         "vp_save", "vp_reset", "vp_edit_questions",
         "pp_save", "pp_reset",
         "cp_open_details", "cp_save", "cp_reset",
@@ -228,26 +202,27 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
   const member = interaction.guild!.members.cache.get(interaction.user.id);
   if (!member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xe74c3c).setDescription("❌ You need **Administrator** permission to use this.")],
+      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ You need **Administrator** permission to use this.")],
       ephemeral: true,
     });
     return;
   }
 
-  const { embed, rows } = buildMainPanel();
-  await interaction.reply({ embeds: [embed], components: rows, ephemeral: true });
+  const sub = interaction.options.getSubcommand();
+
+  if (sub === "verification") {
+    await openVerifyPanel(interaction as unknown as ButtonInteraction);
+  } else if (sub === "premium") {
+    await openPvsPanel(interaction as unknown as ButtonInteraction);
+  } else if (sub === "ping") {
+    await openCtpPanel(interaction as unknown as ButtonInteraction);
+  }
 }
 
 async function handleButtonInteraction(interaction: ButtonInteraction) {
   const { customId } = interaction;
   try {
-    if (customId === "panel_open_verify") {
-      await openVerifyPanel(interaction);
-    } else if (customId === "panel_open_pvs") {
-      await openPvsPanel(interaction);
-    } else if (customId === "panel_open_ctp") {
-      await openCtpPanel(interaction);
-    } else if (customId === "panel_deploy_verify") {
+    if (customId === "panel_deploy_verify") {
       const { embed, row } = buildDeployChannelSelect();
       await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
     } else if (customId === "vp_save") {
@@ -301,13 +276,10 @@ async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInte
       await interaction.update({
         embeds: [
           new EmbedBuilder()
-            .setColor(0x2ecc71)
-            .setTitle("✅ Verification Panel Posted!")
-            .setDescription(
-              `The panel has been posted in <#${channelId}>.\n\n` +
-              "Members will see a **Start Verification** button — once they submit, their answers appear in your logs channel for staff to review."
-            )
-            .setFooter({ text: "Make sure unverified members can see this channel." }),
+            .setColor(0xff0000)
+            .setTitle("✅ Verification Panel Posted")
+            .setDescription(`Panel posted in <#${channelId}>. Members will see the Start Verification button there.`)
+            .setFooter({ text: "Night Stars • NSV" }),
         ],
         components: [],
       });
