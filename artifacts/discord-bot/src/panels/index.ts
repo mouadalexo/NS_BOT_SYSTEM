@@ -39,6 +39,12 @@ import {
   handleCtpPanelSave,
   handleCtpPanelReset,
 } from "./ctp.js";
+import {
+  openStaffPanel,
+  handleStaffPanelSelect,
+  handleStaffPanelSave,
+  handleStaffPanelReset,
+} from "./staff.js";
 import { deployVerificationPanel } from "../modules/verification/index.js";
 
 function buildDeployChannelSelect() {
@@ -117,6 +123,9 @@ export async function registerPanelCommands(client: Client) {
     .addSubcommand((sub) =>
       sub.setName("ping").setDescription("Set up the Call to Play system (CTP)")
     )
+    .addSubcommand((sub) =>
+      sub.setName("staff").setDescription("Set the staff role — grants access to all bot systems")
+    )
     .toJSON();
 
   const pvsCommand = new SlashCommandBuilder()
@@ -171,6 +180,7 @@ export async function registerPanelCommands(client: Client) {
         "vp_save", "vp_reset", "vp_edit_questions",
         "pp_save", "pp_reset",
         "cp_open_details", "cp_save", "cp_reset",
+        "sp_save", "sp_reset",
       ];
       if (panelIds.includes(interaction.customId)) {
         await handleButtonInteraction(interaction as ButtonInteraction);
@@ -216,6 +226,8 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
     await openPvsPanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "ping") {
     await openCtpPanel(interaction as unknown as ButtonInteraction);
+  } else if (sub === "staff") {
+    await openStaffPanel(interaction as unknown as ButtonInteraction);
   }
 }
 
@@ -241,6 +253,10 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleCtpPanelSave(interaction);
     } else if (customId === "cp_reset") {
       await handleCtpPanelReset(interaction);
+    } else if (customId === "sp_save") {
+      await handleStaffPanelSave(interaction);
+    } else if (customId === "sp_reset") {
+      await handleStaffPanelReset(interaction);
     }
   } catch (err) {
     console.error("Panel button error:", err);
@@ -256,6 +272,8 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handlePvsPanelSelect(interaction);
     } else if (customId.startsWith("cp_")) {
       await handleCtpPanelSelect(interaction);
+    } else if (customId.startsWith("sp_")) {
+      await handleStaffPanelSelect(interaction);
     }
   } catch (err) {
     console.error("Panel role select error:", err);

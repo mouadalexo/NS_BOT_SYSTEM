@@ -215,7 +215,9 @@ async function createPrivateVoice(
 async function handleManagerCreatePVS(message: Message, manager: GuildMember, args: string) {
   const config = await getConfig(message.guild!.id);
 
-  if (!config?.pvsManagerRoleId || !manager.roles.cache.has(config.pvsManagerRoleId)) {
+  const hasPvsManagerRole = config?.pvsManagerRoleId && manager.roles.cache.has(config.pvsManagerRoleId);
+  const hasStaffRole = config?.staffRoleId && manager.roles.cache.has(config.staffRoleId);
+  if (!hasPvsManagerRole && !hasStaffRole) {
     return;
   }
 
@@ -311,7 +313,9 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
 async function handleManagerDeletePVS(message: Message, manager: GuildMember, args: string) {
   const config = await getConfig(message.guild!.id);
 
-  if (!config?.pvsManagerRoleId || !manager.roles.cache.has(config.pvsManagerRoleId)) {
+  const hasPvsManagerRole = config?.pvsManagerRoleId && manager.roles.cache.has(config.pvsManagerRoleId);
+  const hasStaffRole = config?.staffRoleId && manager.roles.cache.has(config.staffRoleId);
+  if (!hasPvsManagerRole && !hasStaffRole) {
     return;
   }
 

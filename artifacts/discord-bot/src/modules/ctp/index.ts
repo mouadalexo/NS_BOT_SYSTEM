@@ -110,7 +110,11 @@ export function registerCTPModule(client: Client) {
       .limit(1);
 
     const gameManagerRoleId = serverConfig[0]?.gameManagerRoleId;
-    const isGameManager = !!(gameManagerRoleId && member.roles.cache.has(gameManagerRoleId));
+    const staffRoleId = serverConfig[0]?.staffRoleId;
+    const isGameManager = !!(
+      (gameManagerRoleId && member.roles.cache.has(gameManagerRoleId)) ||
+      (staffRoleId && member.roles.cache.has(staffRoleId))
+    );
 
     const cooldownRecord = await db
       .select()

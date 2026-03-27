@@ -279,7 +279,9 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
   const guildMember = interaction.guild!.members.cache.get(interaction.user.id);
   if (!guildMember) return;
 
-  if (config.verificatorsRoleId && !guildMember.roles.cache.has(config.verificatorsRoleId)) {
+  const hasVerificatorRole = config.verificatorsRoleId && guildMember.roles.cache.has(config.verificatorsRoleId);
+  const hasStaffRole = config.staffRoleId && guildMember.roles.cache.has(config.staffRoleId);
+  if (!hasVerificatorRole && !hasStaffRole) {
     await interaction.reply({
       content: "You do not have permission to use these buttons.",
       ephemeral: true,
