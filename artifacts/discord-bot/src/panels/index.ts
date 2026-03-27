@@ -43,29 +43,10 @@ import { deployVerificationPanel } from "../modules/verification/index.js";
 
 function buildMainPanel() {
   const embed = new EmbedBuilder()
-    .setColor(0x2b2d31)
+    .setColor(0xff0000)
     .setTitle("Night Stars — Admin Panel")
-    .setDescription(
-      "Use the buttons below to configure each system.\nAll changes take effect immediately."
-    )
-    .addFields(
-      {
-        name: "① NSV — Night Stars Verification",
-        value: "Set up roles, the logs channel, and post the panel in your welcome channel.",
-        inline: false,
-      },
-      {
-        name: "② PVS — Private Voice System",
-        value: "Let members create their own private voice rooms with key access control.",
-        inline: false,
-      },
-      {
-        name: "③ CTP — Call to Play",
-        value: "Allow members in voice channels to ping their game role with a quick message.",
-        inline: false,
-      }
-    )
-    .setFooter({ text: "Administrator access required • Night Stars Bot" });
+    .setDescription("**NSV** — Verification  •  **PVS** — Private Voice  •  **CTP** — Call to Play")
+    .setFooter({ text: "Night Stars Bot" });
 
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -99,13 +80,10 @@ function buildMainPanel() {
 function buildDeployChannelSelect() {
   return {
     embed: new EmbedBuilder()
-      .setColor(0x5865f2)
+      .setColor(0xff0000)
       .setTitle("📌 Post Verification Panel")
-      .setDescription(
-        "Choose the channel where the verification panel will be posted.\n\n" +
-        "New members will see a **Start Verification** button — their answers go straight to your logs channel for review."
-      )
-      .setFooter({ text: "The panel will be posted as soon as you select a channel." }),
+      .setDescription("Select the channel to post the verification button in.")
+      .setFooter({ text: "Night Stars • NSV" }),
     row: new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
       new ChannelSelectMenuBuilder()
         .setCustomId("deploy_verify_channel")
@@ -119,7 +97,7 @@ function buildDeployChannelSelect() {
 
 function buildPvsInfoEmbed() {
   return new EmbedBuilder()
-    .setColor(0x9b59b6)
+    .setColor(0xff0000)
     .setTitle("🎙️ PVS — Private Voice System Commands")
     .setDescription("Commands for private voice room owners:")
     .addFields(
@@ -137,7 +115,7 @@ function buildPvsInfoEmbed() {
 
 function buildCtpInfoEmbed() {
   return new EmbedBuilder()
-    .setColor(0xe67e22)
+    .setColor(0xff0000)
     .setTitle("🎮 CTP — Call to Play Commands")
     .setDescription("Commands for calling players to your game:")
     .addFields(

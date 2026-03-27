@@ -23,35 +23,16 @@ interface PvsPanelState {
 export const pvsPanelState = new Map<string, PvsPanelState>();
 
 function buildPvsPanelEmbed(state: PvsPanelState) {
+  const lines = [
+    `**Category** — ${state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "not set"}`,
+    `**Manager Role** — ${state.pvsManagerRoleId ? `<@&${state.pvsManagerRoleId}>` : "not set"}`,
+    `**Waiting Room** — ${state.pvsWaitingRoomChannelId ? `<#${state.pvsWaitingRoomChannelId}>` : "not set"}`,
+  ];
+
   return new EmbedBuilder()
-    .setColor(0x9b59b6)
-    .setTitle("🎙️ PVS — Private Voice System Setup")
-    .setDescription(
-      "Staff with the **PVS Manager Role** can use `+pv @member` to create a private voice room for any member."
-    )
-    .addFields(
-      {
-        name: "Premium Voices Category `optional`",
-        value: state.pvsCategoryId
-          ? `<#${state.pvsCategoryId}>`
-          : "The category where private rooms are created.",
-        inline: false,
-      },
-      {
-        name: "PVS Manager Role `optional`",
-        value: state.pvsManagerRoleId
-          ? `<@&${state.pvsManagerRoleId}>`
-          : "Role that can use `+pv @member` to create rooms.",
-        inline: false,
-      },
-      {
-        name: "Waiting Room `optional`",
-        value: state.pvsWaitingRoomChannelId
-          ? `<#${state.pvsWaitingRoomChannelId}>`
-          : "A voice channel always kept at the bottom of the category.",
-        inline: false,
-      }
-    )
+    .setColor(0xff0000)
+    .setTitle("🎙️ Private Voice System")
+    .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • PVS" });
 }
 
@@ -59,7 +40,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_pvs_category")
-      .setPlaceholder(state.pvsCategoryId ? "✅ Premium Voices Category — click to change" : "Premium Voices Category (optional)...")
+      .setPlaceholder(state.pvsCategoryId ? "✅ Premium Voices Category" : "Premium Voices Category (optional)...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(0)
       .setMaxValues(1)
@@ -68,7 +49,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("pp_manager_role")
-      .setPlaceholder(state.pvsManagerRoleId ? "✅ PVS Manager Role — click to change" : "PVS Manager Role (optional)...")
+      .setPlaceholder(state.pvsManagerRoleId ? "✅ PVS Manager Role" : "PVS Manager Role (optional)...")
       .setMinValues(0)
       .setMaxValues(1)
   );
@@ -76,7 +57,7 @@ function buildPvsPanelComponents(state: PvsPanelState) {
   const row3 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("pp_waiting_room")
-      .setPlaceholder(state.pvsWaitingRoomChannelId ? "✅ Waiting Room — click to change" : "Waiting Room voice channel (optional)...")
+      .setPlaceholder(state.pvsWaitingRoomChannelId ? "✅ Waiting Room" : "Waiting Room (optional)...")
       .addChannelTypes(ChannelType.GuildVoice)
       .setMinValues(0)
       .setMaxValues(1)
@@ -177,24 +158,14 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0x2ecc71)
+        .setColor(0xff0000)
         .setTitle("✅ PVS Saved")
-        .addFields(
-          {
-            name: "Premium Voices Category",
-            value: state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "Not set",
-            inline: true,
-          },
-          {
-            name: "PVS Manager Role",
-            value: state.pvsManagerRoleId ? `<@&${state.pvsManagerRoleId}>` : "Not set",
-            inline: true,
-          },
-          {
-            name: "Waiting Room",
-            value: state.pvsWaitingRoomChannelId ? `<#${state.pvsWaitingRoomChannelId}>` : "Not set",
-            inline: true,
-          }
+        .setDescription(
+          [
+            `**Category** — ${state.pvsCategoryId ? `<#${state.pvsCategoryId}>` : "not set"}`,
+            `**Manager Role** — ${state.pvsManagerRoleId ? `<@&${state.pvsManagerRoleId}>` : "not set"}`,
+            `**Waiting Room** — ${state.pvsWaitingRoomChannelId ? `<#${state.pvsWaitingRoomChannelId}>` : "not set"}`,
+          ].join("\n")
         )
         .setFooter({ text: "Night Stars • PVS" }),
     ],

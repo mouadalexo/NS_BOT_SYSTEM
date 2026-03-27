@@ -7,6 +7,7 @@ import {
   GuildMember,
   OverwriteType,
   VoiceChannel,
+  Guild,
 } from "discord.js";
 import { db } from "@workspace/db";
 import { pvsVoicesTable, pvsKeysTable, botConfigTable } from "@workspace/db";
@@ -86,6 +87,26 @@ async function getConfig(guildId: string) {
   return result[0] ?? null;
 }
 
+async function pushWaitingRoomToBottom(guild: Guild, categoryId: string, waitingRoomChannelId: string) {
+  const categoryChannels = guild.channels.cache
+    .filter((c) => c.parentId === categoryId && c.type === ChannelType.GuildVoice)
+    .sort((a, b) => (a as VoiceChannel).rawPosition - (b as VoiceChannel).rawPosition);
+
+  if (categoryChannels.size === 0) return;
+
+  const channelArray = [...categoryChannels.values()] as VoiceChannel[];
+  const minPos = channelArray[0].rawPosition;
+
+  const reordered = [
+    ...channelArray.filter((c) => c.id !== waitingRoomChannelId),
+    ...channelArray.filter((c) => c.id === waitingRoomChannelId),
+  ];
+
+  await guild.channels.setPositions(
+    reordered.map((c, i) => ({ channel: c.id, position: minPos + i }))
+  ).catch(() => {});
+}
+
 export function registerPVSModule(client: Client) {
   client.on("messageCreate", async (message) => {
     if (message.author.bot) return;
@@ -163,11 +184,8 @@ async function createPrivateVoice(
       ownerId: member.id,
     });
 
-    if (waitingRoomChannelId) {
-      const waitingRoom = guild.channels.cache.get(waitingRoomChannelId);
-      if (waitingRoom) {
-        await waitingRoom.setPosition(999).catch(() => {});
-      }
+    if (waitingRoomChannelId && newChannel.parentId) {
+      await pushWaitingRoomToBottom(guild, newChannel.parentId, waitingRoomChannelId);
     }
 
     const welcomeEmbed = new EmbedBuilder()
@@ -252,9 +270,8 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
       ownerId: target.id,
     });
 
-    if (config.pvsWaitingRoomChannelId) {
-      const waitingRoom = message.guild!.channels.cache.get(config.pvsWaitingRoomChannelId);
-      if (waitingRoom) await waitingRoom.setPosition(999).catch(() => {});
+    if (config.pvsWaitingRoomChannelId && newChannel.parentId) {
+      await pushWaitingRoomToBottom(message.guild!, newChannel.parentId, config.pvsWaitingRoomChannelId);
     }
 
     const welcomeEmbed = new EmbedBuilder()
@@ -276,6 +293,15 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
       .setTimestamp();
 
     await newChannel.send({ content: `<@${target.id}>`, embeds: [welcomeEmbed] }).catch(() => {});
+
+    const staffNotice = await message.channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x2ecc71)
+          .setDescription(`✅ **${newChannel.name}** created for <@${target.id}> — <#${newChannel.id}>`),
+      ],
+    });
+    setTimeout(() => staffNotice.delete().catch(() => {}), 8000);
 
   } catch (err) {
     console.error("PVS: +pv create failed", err);

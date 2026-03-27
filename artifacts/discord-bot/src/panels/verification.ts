@@ -39,69 +39,20 @@ const DEFAULT_QUESTIONS = [
 ];
 
 function buildVerifyPanelEmbed(state: VerifyPanelState) {
-  const allRequired = !!(state.verificatorsRoleId && state.logsChannelId);
+  const lines = [
+    `**Verificators Role** — ${state.verificatorsRoleId ? `<@&${state.verificatorsRoleId}>` : "not set"}`,
+    `**Logs Channel** — ${state.logsChannelId ? `<#${state.logsChannelId}>` : "not set"}`,
+    `**Verified Role** — ${state.verifiedRoleId ? `<@&${state.verifiedRoleId}>` : "not set"}`,
+    `**Unverified Role** — ${state.unverifiedRoleId ? `<@&${state.unverifiedRoleId}>` : "not set"}`,
+    `**Jail Role** — ${state.jailRoleId ? `<@&${state.jailRoleId}>` : "not set"}`,
+    `**Verify Category** — ${state.verifyCategoryId ? `<#${state.verifyCategoryId}>` : "not set"}`,
+  ];
 
   return new EmbedBuilder()
-    .setColor(allRequired ? 0x2ecc71 : 0x5865f2)
-    .setTitle("🛡️ NSV — Night Stars Verification Setup")
-    .addFields(
-      {
-        name: "Verificators Role `required`",
-        value: state.verificatorsRoleId
-          ? `<@&${state.verificatorsRoleId}>`
-          : "Staff who can accept, deny or jail members.",
-        inline: true,
-      },
-      {
-        name: "Logs Channel `required`",
-        value: state.logsChannelId
-          ? `<#${state.logsChannelId}>`
-          : "Where verification requests are sent for review.",
-        inline: true,
-      },
-      { name: "\u200B", value: "\u200B", inline: false },
-      {
-        name: "Verified Role `optional`",
-        value: state.verifiedRoleId
-          ? `<@&${state.verifiedRoleId}>`
-          : "Granted when a member is accepted.",
-        inline: true,
-      },
-      {
-        name: "Unverified Role `optional`",
-        value: state.unverifiedRoleId
-          ? `<@&${state.unverifiedRoleId}>`
-          : "Removed when a member is accepted.",
-        inline: true,
-      },
-      {
-        name: "Jail Role `optional`",
-        value: state.jailRoleId
-          ? `<@&${state.jailRoleId}>`
-          : "Assigned when a member is jailed.",
-        inline: true,
-      },
-      { name: "\u200B", value: "\u200B", inline: false },
-      {
-        name: "Verification Category `optional`",
-        value: state.verifyCategoryId
-          ? `<#${state.verifyCategoryId}>`
-          : "Category for verification channels.",
-        inline: true,
-      },
-      {
-        name: "Assistance Category `optional`",
-        value: state.assistCategoryId
-          ? `<#${state.assistCategoryId}>`
-          : "Category where ticket channels are created.",
-        inline: true,
-      }
-    )
-    .setFooter({
-      text: allRequired
-        ? "Ready to save — click Save Configuration."
-        : "Fill in the required fields to enable saving.",
-    });
+    .setColor(0xff0000)
+    .setTitle("🛡️ Night Stars Verification")
+    .setDescription(lines.join("\n"))
+    .setFooter({ text: "Night Stars • NSV" });
 }
 
 function buildVerifyPanelComponents(state: VerifyPanelState) {
@@ -110,14 +61,14 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
   const row1 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("vp_verificators_role")
-      .setPlaceholder(state.verificatorsRoleId ? "✅ Verificators Role — click to change" : "Select Verificators Role...")
+      .setPlaceholder(state.verificatorsRoleId ? "✅ Verificators Role" : "Verificators Role...")
       .setMinValues(1).setMaxValues(1)
   );
 
   const row2 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("vp_logs_channel")
-      .setPlaceholder(state.logsChannelId ? "✅ Logs Channel — click to change" : "Select Logs Channel...")
+      .setPlaceholder(state.logsChannelId ? "✅ Logs Channel" : "Logs Channel...")
       .addChannelTypes(ChannelType.GuildText)
       .setMinValues(1).setMaxValues(1)
   );
@@ -127,7 +78,7 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
       .setCustomId("vp_roles_group")
       .setPlaceholder(
         [state.verifiedRoleId && "✅ Verified", state.unverifiedRoleId && "✅ Unverified", state.jailRoleId && "✅ Jail"]
-          .filter(Boolean).join(" • ") || "Select Verified / Unverified / Jail Role..."
+          .filter(Boolean).join(" • ") || "Verified / Unverified / Jail Roles..."
       )
       .setMinValues(1).setMaxValues(3)
   );
@@ -135,7 +86,7 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
   const row4 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("vp_verify_category")
-      .setPlaceholder(state.verifyCategoryId ? "✅ Verification Category — click to change" : "Verification Category (optional)...")
+      .setPlaceholder(state.verifyCategoryId ? "✅ Verify Category" : "Verify Category (optional)...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(0).setMaxValues(1)
   );
@@ -143,9 +94,9 @@ function buildVerifyPanelComponents(state: VerifyPanelState) {
   const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("vp_save")
-      .setLabel(canSave ? "Save Configuration" : "Save (fill required fields first)")
-      .setEmoji(canSave ? "💾" : "🔒")
-      .setStyle(canSave ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setLabel("Save")
+      .setEmoji("💾")
+      .setStyle(ButtonStyle.Success)
       .setDisabled(!canSave),
     new ButtonBuilder()
       .setCustomId("vp_edit_questions")
@@ -249,10 +200,9 @@ export async function handleEditQuestionsSubmit(interaction: ModalSubmitInteract
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
-        .setColor(0x2ecc71)
+        .setColor(0xff0000)
         .setTitle("✅ Questions Updated")
-        .setDescription("The 5 verification questions have been saved. New members will see the updated questions.")
-        .addFields(questions.map((q, i) => ({ name: `Q${i + 1}`, value: q, inline: false })))
+        .setDescription(questions.map((q, i) => `**Q${i + 1}** — ${q}`).join("\n"))
         .setFooter({ text: "Night Stars • NSV" }),
     ],
     ephemeral: true,
@@ -293,7 +243,7 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
 
   if (!state.verificatorsRoleId || !state.logsChannelId) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xe74c3c).setDescription("❌ Please fill in all required fields before saving.")],
+      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ Verificators Role and Logs Channel are required.")],
       ephemeral: true,
     });
     return;
@@ -331,16 +281,17 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0x2ecc71)
+        .setColor(0xff0000)
         .setTitle("✅ NSV Saved")
-        .addFields(
-          { name: "Verificators Role", value: `<@&${state.verificatorsRoleId}>`, inline: true },
-          { name: "Logs Channel", value: `<#${state.logsChannelId}>`, inline: true },
-          { name: "Verified Role", value: state.verifiedRoleId ? `<@&${state.verifiedRoleId}>` : "Not set", inline: true },
-          { name: "Unverified Role", value: state.unverifiedRoleId ? `<@&${state.unverifiedRoleId}>` : "Not set", inline: true },
-          { name: "Jail Role", value: state.jailRoleId ? `<@&${state.jailRoleId}>` : "Not set", inline: true },
+        .setDescription(
+          [
+            `**Verificators Role** — <@&${state.verificatorsRoleId}>`,
+            `**Logs Channel** — <#${state.logsChannelId}>`,
+            `**Verified Role** — ${state.verifiedRoleId ? `<@&${state.verifiedRoleId}>` : "not set"}`,
+            `**Unverified Role** — ${state.unverifiedRoleId ? `<@&${state.unverifiedRoleId}>` : "not set"}`,
+            `**Jail Role** — ${state.jailRoleId ? `<@&${state.jailRoleId}>` : "not set"}`,
+          ].join("\n")
         )
-        .setDescription("Configuration saved. Use **Post Verification Panel** from the main panel to deploy the join button.")
         .setFooter({ text: "Night Stars • NSV" }),
     ],
     components: [],

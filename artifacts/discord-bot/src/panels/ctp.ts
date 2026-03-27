@@ -30,51 +30,19 @@ interface CtpPanelState {
 export const ctpPanelState = new Map<string, CtpPanelState>();
 
 function buildCtpPanelEmbed(state: CtpPanelState) {
-  const canSave = !!(state.categoryId && state.gameRoleId && state.gameName);
+  const lines = [
+    `**Game Name** — ${state.gameName ?? "not set"}`,
+    `**Role** — ${state.gameRoleId ? `<@&${state.gameRoleId}>` : "not set"}`,
+    `**Category** — ${state.categoryId ? `<#${state.categoryId}>` : "not set"}`,
+    `**Cooldown** — ${state.cooldown ? `${state.cooldown}s` : "60s (default)"}`,
+    `**Output Channel** — ${state.outputChannelId ? `<#${state.outputChannelId}>` : "same channel as command"}`,
+  ];
 
   return new EmbedBuilder()
-    .setColor(canSave ? 0x2ecc71 : 0xe67e22)
-    .setTitle("🎮 CTP — Call to Play Setup")
-    .addFields(
-      {
-        name: "Game Name `required`",
-        value: state.gameName ?? "Set via **Game Details** button below.",
-        inline: true,
-      },
-      {
-        name: "Role `required`",
-        value: state.gameRoleId ? `<@&${state.gameRoleId}>` : "The role that gets pinged.",
-        inline: true,
-      },
-      {
-        name: "Category `required`",
-        value: state.categoryId
-          ? `<#${state.categoryId}>`
-          : "Category with your game voice channels.",
-        inline: true,
-      },
-      { name: "\u200B", value: "\u200B", inline: false },
-      {
-        name: "Cooldown",
-        value: state.cooldown ? `${state.cooldown}s` : "60s (default)",
-        inline: true,
-      },
-      {
-        name: "Custom Ping Message",
-        value: state.pingMessage ?? "Uses the member's own message.",
-        inline: true,
-      },
-      {
-        name: "Output Channel",
-        value: state.outputChannelId ? `<#${state.outputChannelId}>` : "Same channel as the command.",
-        inline: true,
-      }
-    )
-    .setFooter({
-      text: canSave
-        ? "Ready to save — click Save."
-        : "Fill in Game Name, Role and Category to continue.",
-    });
+    .setColor(0xff0000)
+    .setTitle("🎮 Call to Play")
+    .setDescription(lines.join("\n"))
+    .setFooter({ text: "Night Stars • CTP" });
 }
 
 function buildCtpPanelComponents(state: CtpPanelState) {
@@ -83,7 +51,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("cp_category")
-      .setPlaceholder(state.categoryId ? "✅ Category — click to change" : "Select Game Category...")
+      .setPlaceholder(state.categoryId ? "✅ Game Category" : "Game Category...")
       .addChannelTypes(ChannelType.GuildCategory)
       .setMinValues(1)
       .setMaxValues(1)
@@ -92,7 +60,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("cp_game_role")
-      .setPlaceholder(state.gameRoleId ? "✅ Role — click to change" : "Select Role to ping...")
+      .setPlaceholder(state.gameRoleId ? "✅ Role to ping" : "Role to ping...")
       .setMinValues(1)
       .setMaxValues(1)
   );
@@ -100,7 +68,7 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row3 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("cp_output_channel")
-      .setPlaceholder(state.outputChannelId ? "✅ Output Channel — click to change" : "Output Channel (optional)...")
+      .setPlaceholder(state.outputChannelId ? "✅ Output Channel" : "Output Channel (optional)...")
       .addChannelTypes(ChannelType.GuildText)
       .setMinValues(0)
       .setMaxValues(1)
@@ -109,14 +77,14 @@ function buildCtpPanelComponents(state: CtpPanelState) {
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("cp_open_details")
-      .setLabel(state.gameName ? `Game Details — ${state.gameName}` : "Set Game Name & Cooldown")
+      .setLabel(state.gameName ? `Game: ${state.gameName}` : "Set Game Name & Cooldown")
       .setEmoji("📝")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("cp_save")
-      .setLabel(canSave ? "Save" : "Save (fill required fields first)")
-      .setEmoji(canSave ? "💾" : "🔒")
-      .setStyle(canSave ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setLabel("Save")
+      .setEmoji("💾")
+      .setStyle(ButtonStyle.Success)
       .setDisabled(!canSave),
     new ButtonBuilder()
       .setCustomId("cp_reset")
@@ -227,7 +195,7 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
 
   if (!state.categoryId || !state.gameRoleId || !state.gameName) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xe74c3c).setDescription("❌ Please fill in all required fields before saving.")],
+      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ Game Name, Role, and Category are required.")],
       ephemeral: true,
     });
     return;
@@ -272,15 +240,16 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0x2ecc71)
+        .setColor(0xff0000)
         .setTitle("✅ CTP Saved")
-        .addFields(
-          { name: "Game Name", value: state.gameName, inline: true },
-          { name: "Role", value: `<@&${state.gameRoleId}>`, inline: true },
-          { name: "Category", value: `<#${state.categoryId}>`, inline: true },
-          { name: "Cooldown", value: `${cooldown}s`, inline: true },
-          { name: "Custom Message", value: state.pingMessage ?? "Member's message", inline: true },
-          { name: "Output Channel", value: state.outputChannelId ? `<#${state.outputChannelId}>` : "Same channel", inline: true }
+        .setDescription(
+          [
+            `**Game** — ${state.gameName}`,
+            `**Role** — <@&${state.gameRoleId}>`,
+            `**Category** — <#${state.categoryId}>`,
+            `**Cooldown** — ${cooldown}s`,
+            `**Output Channel** — ${state.outputChannelId ? `<#${state.outputChannelId}>` : "same channel"}`,
+          ].join("\n")
         )
         .setFooter({ text: "Night Stars • CTP" }),
     ],
