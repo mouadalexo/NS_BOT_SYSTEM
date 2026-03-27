@@ -126,7 +126,7 @@ function buildPvsInfoEmbed() {
       { name: "`=key @user`", value: "Give or remove a member's access to your room.", inline: false },
       { name: "`=see keys`", value: "List all members who have access to your room.", inline: false },
       { name: "`=clear keys`", value: "Remove all keys — your room becomes fully private.", inline: false },
-      { name: "`=rename Name`", value: "Rename your voice room.", inline: false },
+      { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
       { name: "\u200B", value: "**Staff Command** (PVS Manager Role required)", inline: false },
       { name: "`+pv @member`", value: "Create a private voice room for a member directly.", inline: false },
     )
