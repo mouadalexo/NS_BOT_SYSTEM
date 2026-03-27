@@ -230,7 +230,7 @@ export async function openEmbedCustomizeModal(interaction: ButtonInteraction) {
     new ActionRowBuilder<TextInputBuilder>().addComponents(
       new TextInputBuilder()
         .setCustomId("vp_embed_title")
-        .setLabel("Embed Title")
+        .setLabel("Title (no emojis — text only)")
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setMaxLength(100)
