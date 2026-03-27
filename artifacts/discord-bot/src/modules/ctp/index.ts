@@ -15,6 +15,7 @@ function formatSeconds(total: number): string {
 
 export function registerCTPModule(client: Client) {
   client.on("messageCreate", async (message: Message) => {
+    try {
     if (message.author.bot) return;
     if (!message.guild) return;
     if (message.content.toLowerCase().trim() !== CTP_COMMAND) return;
@@ -166,6 +167,9 @@ export function registerCTPModule(client: Client) {
         categoryId: config.categoryId,
         lastUsedAt: now,
       });
+    }
+    } catch (err) {
+      console.error("[CTP] Unhandled error in messageCreate:", err);
     }
   });
 }

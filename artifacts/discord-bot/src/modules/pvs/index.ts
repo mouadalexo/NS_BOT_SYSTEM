@@ -109,39 +109,42 @@ async function pushWaitingRoomToBottom(guild: Guild, categoryId: string, waiting
 
 export function registerPVSModule(client: Client) {
   client.on("messageCreate", async (message) => {
-    if (message.author.bot) return;
-    if (!message.guild) return;
+    try {
+      if (message.author.bot) return;
+      if (!message.guild) return;
 
-    const member = message.member;
-    if (!member) return;
+      const member = message.member;
+      if (!member) return;
 
-    if (message.content.startsWith(MANAGER_PREFIX)) {
-      const content = message.content.slice(MANAGER_PREFIX.length).trim();
-      if (content.toLowerCase().startsWith("pv delete ")) {
-        await handleManagerDeletePVS(message, member, content.slice(10).trim());
-      } else if (content.toLowerCase().startsWith("pv ")) {
-        await handleManagerCreatePVS(message, member, content.slice(3).trim());
+      if (message.content.startsWith(MANAGER_PREFIX)) {
+        const content = message.content.slice(MANAGER_PREFIX.length).trim();
+        if (content.toLowerCase().startsWith("pv delete ")) {
+          await handleManagerDeletePVS(message, member, content.slice(10).trim());
+        } else if (content.toLowerCase().startsWith("pv ")) {
+          await handleManagerCreatePVS(message, member, content.slice(3).trim());
+        }
+        return;
       }
-      return;
-    }
 
-    if (!message.content.startsWith(PVS_PREFIX)) return;
+      if (!message.content.startsWith(PVS_PREFIX)) return;
 
-    const content = message.content.slice(PVS_PREFIX.length).trim();
+      const content = message.content.slice(PVS_PREFIX.length).trim();
 
-    if (content.toLowerCase().startsWith("key ")) {
-      await handleKey(message, member, content.slice(4).trim());
-    } else if (content.toLowerCase() === "clear keys") {
-      await handleClearKeys(message, member);
-    } else if (content.toLowerCase() === "see keys") {
-      await handleSeeKeys(message, member);
-    } else if (content.toLowerCase().startsWith("name ")) {
-      await handleRename(message, member, content.slice(5).trim());
-    } else if (content.toLowerCase().startsWith("pull ")) {
-      await handlePull(message, member, content.slice(5).trim());
+      if (content.toLowerCase().startsWith("key ")) {
+        await handleKey(message, member, content.slice(4).trim());
+      } else if (content.toLowerCase() === "clear keys") {
+        await handleClearKeys(message, member);
+      } else if (content.toLowerCase() === "see keys") {
+        await handleSeeKeys(message, member);
+      } else if (content.toLowerCase().startsWith("name ")) {
+        await handleRename(message, member, content.slice(5).trim());
+      } else if (content.toLowerCase().startsWith("pull ")) {
+        await handlePull(message, member, content.slice(5).trim());
+      }
+    } catch (err) {
+      console.error("[PVS] Unhandled error in messageCreate:", err);
     }
   });
-
 }
 
 async function createPrivateVoice(
@@ -218,6 +221,7 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
   const hasPvsManagerRole = config?.pvsManagerRoleId && manager.roles.cache.has(config.pvsManagerRoleId);
   const hasStaffRole = config?.staffRoleId && manager.roles.cache.has(config.staffRoleId);
   if (!hasPvsManagerRole && !hasStaffRole) {
+    await sendTemp(message, errorEmbed("You need the **PVS Manager** or **Staff** role to use this command."));
     return;
   }
 

@@ -11,6 +11,14 @@ import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
 import { registerPanelCommands } from "./panels/index.js";
 
+process.on("unhandledRejection", (reason) => {
+  console.error("[Bot] Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[Bot] Uncaught exception:", err);
+});
+
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
 createServer((_, res) => {
   res.writeHead(200);
