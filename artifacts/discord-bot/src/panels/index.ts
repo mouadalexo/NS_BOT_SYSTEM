@@ -14,6 +14,7 @@ import {
   Routes,
   SlashCommandBuilder,
   ChatInputCommandInteraction,
+  StringSelectMenuInteraction,
   TextChannel,
   ChannelType,
 } from "discord.js";
@@ -33,7 +34,12 @@ import {
 } from "./pvs.js";
 import {
   openCtpPanel,
+  openCtpManagePanel,
   handleCtpPanelSelect,
+  handleCtpGameSelect,
+  handleCtpEditGame,
+  handleCtpRemoveGame,
+  handleCtpBackToManage,
   openCtpDetailsModal,
   handleCtpDetailsModalSubmit,
   handleCtpPanelSave,
@@ -179,11 +185,19 @@ export async function registerPanelCommands(client: Client) {
         "panel_deploy_verify",
         "vp_save", "vp_reset", "vp_edit_questions",
         "pp_save", "pp_reset",
+        "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
         "cp_open_details", "cp_save", "cp_reset",
         "sp_save", "sp_reset",
       ];
       if (panelIds.includes(interaction.customId)) {
         await handleButtonInteraction(interaction as ButtonInteraction);
+      }
+      return;
+    }
+
+    if (interaction.isStringSelectMenu()) {
+      if (interaction.customId === "cp_game_select") {
+        try { await handleCtpGameSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP game select error:", err); }
       }
       return;
     }
@@ -225,7 +239,7 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
   } else if (sub === "premium") {
     await openPvsPanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "ping") {
-    await openCtpPanel(interaction as unknown as ButtonInteraction);
+    await openCtpManagePanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "staff") {
     await openStaffPanel(interaction as unknown as ButtonInteraction);
   }
@@ -247,6 +261,14 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handlePvsPanelSave(interaction);
     } else if (customId === "pp_reset") {
       await handlePvsPanelReset(interaction);
+    } else if (customId === "cp_add_new") {
+      await openCtpPanel(interaction);
+    } else if (customId === "cp_edit_game") {
+      await handleCtpEditGame(interaction);
+    } else if (customId === "cp_remove_game") {
+      await handleCtpRemoveGame(interaction);
+    } else if (customId === "cp_back_manage") {
+      await handleCtpBackToManage(interaction);
     } else if (customId === "cp_open_details") {
       await openCtpDetailsModal(interaction);
     } else if (customId === "cp_save") {

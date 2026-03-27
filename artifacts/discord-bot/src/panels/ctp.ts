@@ -2,6 +2,7 @@ import {
   ButtonInteraction,
   RoleSelectMenuInteraction,
   ChannelSelectMenuInteraction,
+  StringSelectMenuInteraction,
   ModalSubmitInteraction,
   EmbedBuilder,
   ActionRowBuilder,
@@ -9,6 +10,7 @@ import {
   ButtonStyle,
   RoleSelectMenuBuilder,
   ChannelSelectMenuBuilder,
+  StringSelectMenuBuilder,
   ModalBuilder,
   TextInputBuilder,
   TextInputStyle,
@@ -26,7 +28,12 @@ interface CtpPanelState {
   pingMessage?: string;
 }
 
+interface CtpManageState {
+  selectedCategoryId?: string;
+}
+
 export const ctpPanelState = new Map<string, CtpPanelState>();
+export const ctpManageState = new Map<string, CtpManageState>();
 
 function parseCooldown(input: string): number {
   const s = input.trim().toLowerCase().replace(/\s+/g, "");
@@ -53,6 +60,210 @@ function formatSeconds(total: number): string {
   return `${s}s`;
 }
 
+async function getGuildGames(guildId: string) {
+  return db
+    .select()
+    .from(ctpCategoriesTable)
+    .where(eq(ctpCategoriesTable.guildId, guildId));
+}
+
+export async function openCtpManagePanel(interaction: ButtonInteraction) {
+  const guildId = interaction.guild!.id;
+  const games = await getGuildGames(guildId);
+
+  ctpManageState.set(interaction.user.id, {});
+
+  if (!games.length) {
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff0000)
+          .setTitle("Call to Play — Game Manager")
+          .setDescription("No games configured yet. Add your first game below.")
+          .setFooter({ text: "Night Stars • CTP" }),
+      ],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId("cp_add_new")
+            .setLabel("Add Game")
+            .setStyle(ButtonStyle.Success)
+        ),
+      ],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.reply({
+    embeds: [buildManageEmbed(games)],
+    components: buildManageComponents(games),
+    ephemeral: true,
+  });
+}
+
+function buildManageEmbed(games: Awaited<ReturnType<typeof getGuildGames>>, selected?: typeof games[0]) {
+  if (selected) {
+    return new EmbedBuilder()
+      .setColor(0xff0000)
+      .setTitle(`${selected.gameName}`)
+      .setDescription(
+        [
+          `**Role** — <@&${selected.gameRoleId}>`,
+          `**Category** — <#${selected.categoryId}>`,
+          `**Cooldown** — ${formatSeconds(selected.cooldownSeconds)}`,
+          `**Ping Message** — ${selected.pingMessage ?? "_default_"}`,
+        ].join("\n")
+      )
+      .setFooter({ text: `${games.length} game(s) configured • Night Stars CTP` });
+  }
+
+  return new EmbedBuilder()
+    .setColor(0xff0000)
+    .setTitle("Call to Play — Game Manager")
+    .setDescription(
+      games.map((g) => `**${g.gameName}** — <@&${g.gameRoleId}> • Cooldown: ${formatSeconds(g.cooldownSeconds)}`).join("\n")
+    )
+    .setFooter({ text: `${games.length} game(s) configured • Night Stars CTP` });
+}
+
+function buildManageComponents(games: Awaited<ReturnType<typeof getGuildGames>>, selectedCategoryId?: string) {
+  const selectRow = new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
+    new StringSelectMenuBuilder()
+      .setCustomId("cp_game_select")
+      .setPlaceholder("Select a game to edit or remove...")
+      .addOptions(
+        games.map((g) => ({
+          label: g.gameName,
+          value: g.categoryId,
+          description: `Cooldown: ${formatSeconds(g.cooldownSeconds)}`,
+          default: g.categoryId === selectedCategoryId,
+        }))
+      )
+  );
+
+  if (selectedCategoryId) {
+    const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId("cp_edit_game")
+        .setLabel("Edit")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("cp_remove_game")
+        .setLabel("Remove")
+        .setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId("cp_add_new")
+        .setLabel("Add New")
+        .setStyle(ButtonStyle.Success),
+    );
+    return [selectRow, actionRow];
+  }
+
+  const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("cp_add_new")
+      .setLabel("Add New")
+      .setStyle(ButtonStyle.Success),
+  );
+  return [selectRow, actionRow];
+}
+
+export async function handleCtpGameSelect(interaction: StringSelectMenuInteraction) {
+  const userId = interaction.user.id;
+  const selectedCategoryId = interaction.values[0];
+  const guildId = interaction.guild!.id;
+
+  ctpManageState.set(userId, { selectedCategoryId });
+
+  const games = await getGuildGames(guildId);
+  const selected = games.find((g) => g.categoryId === selectedCategoryId);
+  if (!selected) return;
+
+  await interaction.update({
+    embeds: [buildManageEmbed(games, selected)],
+    components: buildManageComponents(games, selectedCategoryId),
+  });
+}
+
+export async function handleCtpRemoveGame(interaction: ButtonInteraction) {
+  const userId = interaction.user.id;
+  const manageState = ctpManageState.get(userId);
+  const selectedCategoryId = manageState?.selectedCategoryId;
+  const guildId = interaction.guild!.id;
+
+  if (!selectedCategoryId) return;
+
+  await db.delete(ctpCooldownsTable).where(
+    and(eq(ctpCooldownsTable.guildId, guildId), eq(ctpCooldownsTable.categoryId, selectedCategoryId))
+  );
+  await db.delete(ctpCategoriesTable).where(
+    and(eq(ctpCategoriesTable.guildId, guildId), eq(ctpCategoriesTable.categoryId, selectedCategoryId))
+  );
+
+  ctpManageState.set(userId, {});
+
+  const remaining = await getGuildGames(guildId);
+
+  if (!remaining.length) {
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff0000)
+          .setTitle("Call to Play — Game Manager")
+          .setDescription("Game removed. No games configured yet. Add your first game below.")
+          .setFooter({ text: "Night Stars • CTP" }),
+      ],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId("cp_add_new")
+            .setLabel("Add Game")
+            .setStyle(ButtonStyle.Success)
+        ),
+      ],
+    });
+    return;
+  }
+
+  await interaction.update({
+    embeds: [buildManageEmbed(remaining)],
+    components: buildManageComponents(remaining),
+  });
+}
+
+export async function handleCtpEditGame(interaction: ButtonInteraction) {
+  const userId = interaction.user.id;
+  const manageState = ctpManageState.get(userId);
+  const selectedCategoryId = manageState?.selectedCategoryId;
+  const guildId = interaction.guild!.id;
+
+  if (!selectedCategoryId) return;
+
+  const existing = await db
+    .select()
+    .from(ctpCategoriesTable)
+    .where(and(eq(ctpCategoriesTable.guildId, guildId), eq(ctpCategoriesTable.categoryId, selectedCategoryId)))
+    .limit(1);
+
+  if (!existing.length) return;
+
+  const ex = existing[0];
+  const state: CtpPanelState = {
+    categoryId: ex.categoryId,
+    gameName: ex.gameName,
+    gameRoleId: ex.gameRoleId,
+    cooldownSeconds: ex.cooldownSeconds,
+    pingMessage: ex.pingMessage ?? undefined,
+  };
+  ctpPanelState.set(userId, state);
+
+  await interaction.update({
+    embeds: [buildCtpPanelEmbed(state)],
+    components: buildCtpPanelComponents(state),
+  });
+}
+
 function buildCtpPanelEmbed(state: CtpPanelState) {
   const cooldownStr = state.cooldownSeconds != null
     ? formatSeconds(state.cooldownSeconds)
@@ -75,6 +286,10 @@ function buildCtpPanelEmbed(state: CtpPanelState) {
 function buildCtpPanelComponents(state: CtpPanelState) {
   const canSave = !!(state.categoryId && state.gameRoleId && state.gameName);
 
+  const cooldownStr = state.cooldownSeconds != null
+    ? formatSeconds(state.cooldownSeconds)
+    : "10m";
+
   const row1 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("cp_category")
@@ -92,14 +307,10 @@ function buildCtpPanelComponents(state: CtpPanelState) {
       .setMaxValues(1)
   );
 
-  const cooldownStr = state.cooldownSeconds != null
-    ? formatSeconds(state.cooldownSeconds)
-    : "10m";
-
-  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("cp_open_details")
-      .setLabel(state.gameName ? `Game: ${state.gameName} | ${cooldownStr}` : "Game Name & Cooldown")
+      .setLabel(state.gameName ? `${state.gameName} | ${cooldownStr}` : "Game Name & Cooldown")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("cp_save")
@@ -107,12 +318,12 @@ function buildCtpPanelComponents(state: CtpPanelState) {
       .setStyle(ButtonStyle.Success)
       .setDisabled(!canSave),
     new ButtonBuilder()
-      .setCustomId("cp_reset")
-      .setLabel("Reset")
-      .setStyle(ButtonStyle.Danger)
+      .setCustomId("cp_back_manage")
+      .setLabel("Back")
+      .setStyle(ButtonStyle.Secondary),
   );
 
-  return [row1, row2, row4];
+  return [row1, row2, row3];
 }
 
 export async function openCtpPanel(interaction: ButtonInteraction) {
@@ -120,10 +331,43 @@ export async function openCtpPanel(interaction: ButtonInteraction) {
   const state: CtpPanelState = {};
   ctpPanelState.set(userId, state);
 
-  await interaction.reply({
+  await interaction.update({
     embeds: [buildCtpPanelEmbed(state)],
     components: buildCtpPanelComponents(state),
-    ephemeral: true,
+  });
+}
+
+export async function handleCtpBackToManage(interaction: ButtonInteraction) {
+  const guildId = interaction.guild!.id;
+  const userId = interaction.user.id;
+  ctpManageState.set(userId, {});
+
+  const games = await getGuildGames(guildId);
+
+  if (!games.length) {
+    await interaction.update({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff0000)
+          .setTitle("Call to Play — Game Manager")
+          .setDescription("No games configured yet. Add your first game below.")
+          .setFooter({ text: "Night Stars • CTP" }),
+      ],
+      components: [
+        new ActionRowBuilder<ButtonBuilder>().addComponents(
+          new ButtonBuilder()
+            .setCustomId("cp_add_new")
+            .setLabel("Add Game")
+            .setStyle(ButtonStyle.Success)
+        ),
+      ],
+    });
+    return;
+  }
+
+  await interaction.update({
+    embeds: [buildManageEmbed(games)],
+    components: buildManageComponents(games),
   });
 }
 
@@ -200,8 +444,8 @@ export async function openCtpDetailsModal(interaction: ButtonInteraction) {
     new ActionRowBuilder<TextInputBuilder>().addComponents(
       new TextInputBuilder()
         .setCustomId("cp_ping_msg")
-        .setLabel("Custom Ping Message (optional)")
-        .setPlaceholder("Leave empty to use the member's own message")
+        .setLabel("Ping Message (optional)")
+        .setPlaceholder("Leave empty to use default: Looking for players!")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false)
         .setMaxLength(200)
@@ -275,23 +519,13 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
   );
 
   ctpPanelState.delete(userId);
+  ctpManageState.set(userId, {});
+
+  const allGames = await getGuildGames(guildId);
 
   await interaction.update({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0xff0000)
-        .setTitle("CTP Saved")
-        .setDescription(
-          [
-            `**Game** — ${state.gameName}`,
-            `**Role** — <@&${state.gameRoleId}>`,
-            `**Category** — <#${state.categoryId}>`,
-            `**Cooldown** — ${formatSeconds(cooldownSeconds)}`,
-          ].join("\n")
-        )
-        .setFooter({ text: "Night Stars • CTP" }),
-    ],
-    components: [],
+    embeds: [buildManageEmbed(allGames)],
+    components: buildManageComponents(allGames),
   });
 }
 
