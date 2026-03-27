@@ -161,7 +161,7 @@ async function createPrivateVoice(
 ) {
   try {
     const newChannel = await guild.channels.create({
-      name: `${member.displayName}'s Voice`,
+      name: `${member.displayName} Premium Voice`,
       type: ChannelType.GuildVoice,
       parent: categoryId ?? undefined,
       permissionOverwrites: [
@@ -248,7 +248,7 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
     const categoryId = config.pvsCategoryId ?? fallbackCategoryId;
 
     const newChannel = await message.guild!.channels.create({
-      name: `${target.displayName}'s Voice`,
+      name: `${target.displayName} Premium Voice`,
       type: ChannelType.GuildVoice,
       parent: categoryId ?? undefined,
       permissionOverwrites: [
