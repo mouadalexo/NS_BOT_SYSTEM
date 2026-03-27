@@ -48,17 +48,17 @@ function buildMainPanel() {
     )
     .addFields(
       {
-        name: "① Verification",
+        name: "① NSV — Night Stars Verification",
         value: "Set up roles, the logs channel, and post the panel in your welcome channel.",
         inline: false,
       },
       {
-        name: "② Premium Voices",
+        name: "② PVS — Private Voice System",
         value: "Let members create their own private voice rooms with key access control.",
         inline: false,
       },
       {
-        name: "③ Call to Play",
+        name: "③ CTP — Call to Play",
         value: "Allow members in voice channels to ping their game role with a quick message.",
         inline: false,
       }
@@ -68,12 +68,12 @@ function buildMainPanel() {
   const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("panel_open_verify")
-      .setLabel("Verification")
+      .setLabel("NSV")
       .setEmoji("🛡️")
       .setStyle(ButtonStyle.Primary),
     new ButtonBuilder()
       .setCustomId("panel_open_pvs")
-      .setLabel("Premium Voices")
+      .setLabel("PVS")
       .setEmoji("🎙️")
       .setStyle(ButtonStyle.Secondary),
     new ButtonBuilder()

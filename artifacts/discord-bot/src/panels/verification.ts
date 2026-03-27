@@ -33,7 +33,7 @@ function buildVerifyPanelEmbed(state: VerifyPanelState) {
 
   return new EmbedBuilder()
     .setColor(allRequired ? 0x2ecc71 : 0x5865f2)
-    .setTitle("🛡️ Verification Setup")
+    .setTitle("🛡️ NSV — Night Stars Verification Setup")
     .setDescription(
       "Configure who reviews new members and where the logs appear.\n" +
       "Once saved, use **Post Verification Panel** from the main panel to deploy the join button."

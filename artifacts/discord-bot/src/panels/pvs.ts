@@ -24,7 +24,7 @@ function buildPvsPanelEmbed(state: PvsPanelState) {
 
   return new EmbedBuilder()
     .setColor(canSave ? 0x2ecc71 : 0x9b59b6)
-    .setTitle("🎙️ Premium Voices Setup")
+    .setTitle("🎙️ PVS — Private Voice System Setup")
     .setDescription(
       "When a member joins the **Create Channel**, the bot instantly creates a private voice room for them.\n\n" +
       "The room owner can:\n" +
@@ -195,7 +195,7 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
         .setDescription(
           "Members can now join the Create Channel to get their own private voice room."
         )
-        .setFooter({ text: "Night Stars • Premium Voices" }),
+        .setFooter({ text: "Night Stars • PVS" }),
     ],
     components: [],
   });
