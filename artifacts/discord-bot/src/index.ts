@@ -4,11 +4,20 @@ import {
   Partials,
   ActivityType,
 } from "discord.js";
+import { createServer } from "http";
 import { registerVerificationModule } from "./modules/verification/index.js";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSlashCommands } from "./commands.js";
 import { registerPanelCommands } from "./panels/index.js";
+
+const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
+createServer((_, res) => {
+  res.writeHead(200);
+  res.end("OK");
+}).listen(port, () => {
+  console.log(`Health check server listening on port ${port}`);
+});
 
 const token = process.env.DISCORD_TOKEN;
 if (!token) {
