@@ -1,4 +1,4 @@
-import { Client, Message, EmbedBuilder, ChannelType, TextChannel } from "discord.js";
+import { Client, Message, EmbedBuilder, TextChannel } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable, ctpCategoriesTable, ctpCooldownsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
@@ -19,94 +19,67 @@ export function registerCTPModule(client: Client) {
     if (!message.guild) return;
     if (!message.content.startsWith(CTP_PREFIX)) return;
 
-    const content = message.content.slice(CTP_PREFIX.length).trim();
-    if (!content) return;
+    const gameName = message.content.slice(CTP_PREFIX.length).trim();
+    if (!gameName) return;
 
     const member = message.member;
     if (!member) return;
 
-    const voiceChannel = member.voice.channel;
+    const guildId = message.guild.id;
 
-    if (!voiceChannel) {
-      const allConfigs = await db
-        .select()
-        .from(ctpCategoriesTable)
-        .where(and(eq(ctpCategoriesTable.guildId, message.guild.id), eq(ctpCategoriesTable.enabled, 1)));
-
-      await message.delete().catch(() => {});
-      const gameNames = allConfigs.map((c) => `**${c.gameName}**`).join(", ");
-      const notice = await message.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setDescription(
-              allConfigs.length
-                ? `You must join a **${gameNames}** voice channel first before tagging.`
-                : "You must be in a game voice channel first before tagging."
-            ),
-        ],
-      });
-      setTimeout(() => notice.delete().catch(() => {}), 6000);
-      return;
-    }
-
-    const categoryId = voiceChannel.parentId;
-
-    if (!categoryId) {
-      await message.delete().catch(() => {});
-      const notice = await message.channel.send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xe74c3c)
-            .setDescription("This voice channel is not set up for Call to Play."),
-        ],
-      });
-      setTimeout(() => notice.delete().catch(() => {}), 6000);
-      return;
-    }
-
-    const ctpConfig = await db
+    const allConfigs = await db
       .select()
       .from(ctpCategoriesTable)
-      .where(
-        and(
-          eq(ctpCategoriesTable.guildId, message.guild.id),
-          eq(ctpCategoriesTable.categoryId, categoryId),
-          eq(ctpCategoriesTable.enabled, 1)
-        )
-      )
-      .limit(1);
+      .where(and(eq(ctpCategoriesTable.guildId, guildId), eq(ctpCategoriesTable.enabled, 1)));
 
-    if (!ctpConfig.length) {
-      const allConfigs = await db
-        .select()
-        .from(ctpCategoriesTable)
-        .where(and(eq(ctpCategoriesTable.guildId, message.guild.id), eq(ctpCategoriesTable.enabled, 1)));
+    if (!allConfigs.length) return;
 
-      await message.delete().catch(() => {});
-      const gameNames = allConfigs.map((c) => `**${c.gameName}**`).join(", ");
+    const config = allConfigs.find(
+      (c) => c.gameName.toLowerCase() === gameName.toLowerCase()
+    );
+
+    if (!config) {
+      const gameList = allConfigs.map((c) => `**${c.gameName}**`).join(", ");
       const notice = await message.channel.send({
         embeds: [
           new EmbedBuilder()
             .setColor(0xe74c3c)
-            .setDescription(
-              allConfigs.length
-                ? `You must join a ${gameNames} voice channel first before tagging.`
-                : "This voice channel is not set up for Call to Play."
-            ),
+            .setDescription(`No game found with that name. Available: ${gameList}`),
+        ],
+      });
+      setTimeout(() => notice.delete().catch(() => {}), 8000);
+      return;
+    }
+
+    const voiceChannel = member.voice.channel;
+    if (!voiceChannel) {
+      const notice = await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setDescription(`You must join a **${config.gameName}** voice channel first.`),
         ],
       });
       setTimeout(() => notice.delete().catch(() => {}), 6000);
       return;
     }
 
-    const config = ctpConfig[0];
-    const now = new Date();
+    if (voiceChannel.parentId !== config.categoryId) {
+      const notice = await message.channel.send({
+        embeds: [
+          new EmbedBuilder()
+            .setColor(0xe74c3c)
+            .setDescription(`You must be in a **${config.gameName}** voice channel to use this tag.`),
+        ],
+      });
+      setTimeout(() => notice.delete().catch(() => {}), 6000);
+      return;
+    }
 
     const serverConfig = await db
       .select()
       .from(botConfigTable)
-      .where(eq(botConfigTable.guildId, message.guild.id))
+      .where(eq(botConfigTable.guildId, guildId))
       .limit(1);
 
     const gameManagerRoleId = serverConfig[0]?.gameManagerRoleId;
@@ -116,13 +89,15 @@ export function registerCTPModule(client: Client) {
       (staffRoleId && member.roles.cache.has(staffRoleId))
     );
 
+    const now = new Date();
+
     const cooldownRecord = await db
       .select()
       .from(ctpCooldownsTable)
       .where(
         and(
-          eq(ctpCooldownsTable.guildId, message.guild.id),
-          eq(ctpCooldownsTable.categoryId, categoryId)
+          eq(ctpCooldownsTable.guildId, guildId),
+          eq(ctpCooldownsTable.categoryId, config.categoryId)
         )
       )
       .limit(1);
@@ -133,8 +108,6 @@ export function registerCTPModule(client: Client) {
       if (elapsed < config.cooldownSeconds) {
         const remaining = Math.ceil(config.cooldownSeconds - elapsed);
         const timeStr = formatSeconds(remaining);
-
-        await message.delete().catch(() => {});
         const notice = await message.channel.send({
           embeds: [
             new EmbedBuilder()
@@ -152,13 +125,13 @@ export function registerCTPModule(client: Client) {
       }
     }
 
-    const pingText = config.pingMessage ?? content;
+    const pingMessage = config.pingMessage ?? "Looking for players!";
 
     const pingEmbed = new EmbedBuilder()
       .setColor(0xff0000)
       .setDescription(
         `<@&${config.gameRoleId}>\n` +
-        `**${member.displayName}** — ${pingText}`
+        `**${member.displayName}** — ${pingMessage}`
       );
 
     await voiceChannel.send({ embeds: [pingEmbed] });
@@ -182,14 +155,14 @@ export function registerCTPModule(client: Client) {
         .set({ lastUsedAt: now })
         .where(
           and(
-            eq(ctpCooldownsTable.guildId, message.guild.id),
-            eq(ctpCooldownsTable.categoryId, categoryId)
+            eq(ctpCooldownsTable.guildId, guildId),
+            eq(ctpCooldownsTable.categoryId, config.categoryId)
           )
         );
     } else {
       await db.insert(ctpCooldownsTable).values({
-        guildId: message.guild.id,
-        categoryId,
+        guildId,
+        categoryId: config.categoryId,
         lastUsedAt: now,
       });
     }

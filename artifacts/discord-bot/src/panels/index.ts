@@ -90,16 +90,16 @@ function buildCtpInfoEmbed() {
     .setDescription("Commands for calling players to your game:")
     .addFields(
       {
-        name: "`-your message`",
+        name: "`-GameName`",
         value:
-          "Ping the game role with your message.\n" +
+          "Ping the game role for that game.\n" +
           "You must be in a voice channel under the configured game category.\n" +
-          "Example: `-we need one more for ranked!`",
+          "Example: `-Valorant` or `-CSGO`",
         inline: false,
       },
       {
         name: "Cooldown",
-        value: "Each category has its own cooldown. If active, the bot tells you how long to wait.",
+        value: "Each game has its own cooldown. If active, the bot tells you how long to wait.",
         inline: false,
       },
     )
