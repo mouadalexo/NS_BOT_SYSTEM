@@ -128,7 +128,8 @@ function buildPvsInfoEmbed() {
       { name: "`=clear keys`", value: "Remove all keys — your room becomes fully private.", inline: false },
       { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
       { name: "\u200B", value: "**Staff Command** (PVS Manager Role required)", inline: false },
-      { name: "`+pv @member`", value: "Create a private voice room for a member directly.", inline: false },
+      { name: "`+pv @member`", value: "Create a permanent private voice room for a member.", inline: false },
+      { name: "`+pv delete @member`", value: "Remove a member's Premium Voice room.", inline: false },
     )
     .setFooter({ text: "Night Stars • PVS" });
 }

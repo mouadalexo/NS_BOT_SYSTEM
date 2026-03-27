@@ -96,7 +96,9 @@ export function registerPVSModule(client: Client) {
 
     if (message.content.startsWith(MANAGER_PREFIX)) {
       const content = message.content.slice(MANAGER_PREFIX.length).trim();
-      if (content.toLowerCase().startsWith("pv ")) {
+      if (content.toLowerCase().startsWith("pv delete ")) {
+        await handleManagerDeletePVS(message, member, content.slice(10).trim());
+      } else if (content.toLowerCase().startsWith("pv ")) {
         await handleManagerCreatePVS(message, member, content.slice(3).trim());
       }
       return;
@@ -117,25 +119,6 @@ export function registerPVSModule(client: Client) {
     }
   });
 
-  client.on("voiceStateUpdate", async (oldState, newState) => {
-    if (!oldState.channelId) return;
-
-    const channel = oldState.channel;
-    if (!channel || channel.type !== ChannelType.GuildVoice) return;
-    if (channel.members.size > 0) return;
-
-    const voice = await db
-      .select()
-      .from(pvsVoicesTable)
-      .where(eq(pvsVoicesTable.channelId, oldState.channelId))
-      .limit(1);
-
-    if (voice.length === 0) return;
-
-    await db.delete(pvsKeysTable).where(eq(pvsKeysTable.channelId, oldState.channelId));
-    await db.delete(pvsVoicesTable).where(eq(pvsVoicesTable.channelId, oldState.channelId));
-    await channel.delete().catch(() => {});
-  });
 }
 
 async function createPrivateVoice(
@@ -296,6 +279,49 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
   } catch (err) {
     console.error("PVS: +pv create failed", err);
   }
+}
+
+async function handleManagerDeletePVS(message: Message, manager: GuildMember, args: string) {
+  const config = await getConfig(message.guild!.id);
+
+  if (!config?.pvsManagerRoleId || !manager.roles.cache.has(config.pvsManagerRoleId)) {
+    return;
+  }
+
+  const targetId = args.replace(/[<@!>]/g, "").trim();
+  if (!targetId) {
+    await sendTemp(message, errorEmbed("Please mention a member. Usage: `+pv delete @member`"));
+    return;
+  }
+
+  const voice = await db
+    .select()
+    .from(pvsVoicesTable)
+    .where(and(eq(pvsVoicesTable.guildId, message.guild!.id), eq(pvsVoicesTable.ownerId, targetId)))
+    .limit(1);
+
+  if (!voice.length) {
+    await sendTemp(message, errorEmbed("This member doesn't have a Premium Voice room."));
+    return;
+  }
+
+  const channelId = voice[0].channelId;
+  const channel = message.guild!.channels.cache.get(channelId);
+
+  await db.delete(pvsKeysTable).where(eq(pvsKeysTable.channelId, channelId));
+  await db.delete(pvsVoicesTable).where(eq(pvsVoicesTable.channelId, channelId));
+
+  if (channel) await channel.delete().catch(() => {});
+
+  await message.delete().catch(() => {});
+  const sent = await message.channel.send({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0xe74c3c)
+        .setDescription(`🗑️ <@${targetId}>'s Premium Voice room has been removed by ${manager.displayName}.`)
+    ],
+  });
+  setTimeout(() => sent.delete().catch(() => {}), 10000);
 }
 
 async function handleKey(message: Message, member: GuildMember, args: string) {
