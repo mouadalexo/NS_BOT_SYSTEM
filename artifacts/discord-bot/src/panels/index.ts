@@ -117,7 +117,7 @@ export async function registerPanelCommands(client: Client) {
   if (!token) throw new Error("DISCORD_TOKEN is missing");
 
   const setupCommand = new SlashCommandBuilder()
-    .setName("stp")
+    .setName("setup")
     .setDescription("Configure Night Stars bot systems")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .addSubcommand((sub) =>
@@ -134,14 +134,15 @@ export async function registerPanelCommands(client: Client) {
     )
     .toJSON();
 
-  const pvsCommand = new SlashCommandBuilder()
-    .setName("pvs")
-    .setDescription("Show all PVS (Private Voice System) commands")
-    .toJSON();
-
-  const ctpCommand = new SlashCommandBuilder()
-    .setName("ctp")
-    .setDescription("Show all CTP (Call to Play) commands")
+  const helpCommand = new SlashCommandBuilder()
+    .setName("help")
+    .setDescription("Show how to use Night Stars bot systems")
+    .addSubcommand((sub) =>
+      sub.setName("pvs").setDescription("Show all PVS (Private Voice System) commands")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("ctp").setDescription("Show all CTP (Call to Play) commands")
+    )
     .toJSON();
 
   const rest = new REST().setToken(token);
@@ -149,7 +150,7 @@ export async function registerPanelCommands(client: Client) {
   const registerForGuild = async (guildId: string, guildName: string) => {
     try {
       await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
-        body: [setupCommand, pvsCommand, ctpCommand],
+        body: [setupCommand, helpCommand],
       });
       console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
@@ -170,12 +171,15 @@ export async function registerPanelCommands(client: Client) {
 
     if (interaction.isChatInputCommand()) {
       const name = interaction.commandName;
-      if (name === "stp") {
+      if (name === "setup") {
         await handleSetupCommand(interaction as ChatInputCommandInteraction);
-      } else if (name === "pvs") {
-        await interaction.reply({ embeds: [buildPvsInfoEmbed()], ephemeral: true });
-      } else if (name === "ctp") {
-        await interaction.reply({ embeds: [buildCtpInfoEmbed()], ephemeral: true });
+      } else if (name === "help") {
+        const sub = (interaction as ChatInputCommandInteraction).options.getSubcommand();
+        if (sub === "pvs") {
+          await interaction.reply({ embeds: [buildPvsInfoEmbed()], ephemeral: true });
+        } else if (sub === "ctp") {
+          await interaction.reply({ embeds: [buildCtpInfoEmbed()], ephemeral: true });
+        }
       }
       return;
     }
