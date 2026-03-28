@@ -98,6 +98,7 @@ function buildRequestEmbed(
   memberUsername: string,
   memberAvatarUrl: string | null,
   createdAt: number,
+  joinedAt: number | null,
   answers: string[],
   questions: string[],
   applicationNumber: number
@@ -120,6 +121,11 @@ function buildRequestEmbed(
       {
         name: "📅 Account Age",
         value: `<t:${Math.floor(createdAt / 1000)}:R>`,
+        inline: true,
+      },
+      {
+        name: "🚪 Joined Server",
+        value: joinedAt ? `<t:${Math.floor(joinedAt / 1000)}:R>` : "_Unknown_",
         inline: true,
       },
       { name: "\u200B", value: "**─── Answers ───**", inline: false },
@@ -346,12 +352,14 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
 
   const questions = await getQuestions(guildId);
   const avatarUrl = user.displayAvatarURL({ size: 128 });
+  const joinedAt = (interaction.member as import("discord.js").GuildMember)?.joinedTimestamp ?? null;
 
   const requestEmbed = buildRequestEmbed(
     user.id,
     user.username,
     avatarUrl,
     user.createdTimestamp,
+    joinedAt,
     answers,
     questions,
     applicationNumber
