@@ -79,22 +79,21 @@ async function buildPanel(dynamicRoles, guild) {
     });
 
     const menuOptions = options.map(opt => {
+      const role = guild.roles.cache.get(opt.roleId);
+      const count = role?.members?.size ?? 0;
+
+      const label = count > 0
+        ? `${opt.label}  •  ${count}`
+        : opt.label;
+
       const option = new StringSelectMenuOptionBuilder()
-        .setLabel(opt.label)
+        .setLabel(label.slice(0, 100))
         .setValue(slugify(opt.label));
 
       const emoji = resolveEmoji(opt.emoji);
       if (emoji) {
         try { option.setEmoji(emoji); } catch (_) {}
       }
-
-      // Show member count as plain number only
-      try {
-        const role = guild.roles.cache.get(opt.roleId);
-        if (role && role.members.size > 0) {
-          option.setDescription(`${role.members.size}`);
-        }
-      } catch (_) {}
 
       return option;
     });
