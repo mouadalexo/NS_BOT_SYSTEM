@@ -11,6 +11,7 @@ import { registerVerificationModule } from "./modules/verification/index.js";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
+import { registerStatsModule } from "./modules/stats/index.js";
 import { registerPanelCommands } from "./panels/index.js";
 
 process.on("unhandledRejection", (reason) => {
@@ -124,5 +125,6 @@ if (!token) {
     registerVerificationModule(client);
     registerPVSModule(client);
     registerCTPModule(client);
+    registerStatsModule(client);
   });
 }
