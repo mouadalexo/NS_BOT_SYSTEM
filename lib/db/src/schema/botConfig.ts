@@ -18,6 +18,7 @@ export const botConfigTable = pgTable("bot_config", {
   pvsManagerRoleId: text("pvs_manager_role_id"),
   pvsWaitingRoomChannelId: text("pvs_waiting_room_channel_id"),
   staffRoleId: text("staff_role_id"),
+  announcementsRoleId: text("announcements_role_id"),
   verificationQuestions: text("verification_questions"),
   panelEmbedTitle: text("panel_embed_title"),
   panelEmbedDescription: text("panel_embed_description"),
