@@ -101,7 +101,7 @@ timeoutMs = 20000
 [userenv]
 
 [userenv.shared]
-MAIN_GUILD_ID = "1394456890649481336"
+MAIN_GUILD_ID = "1080982657179058206"
 
 [nix]
 channel = "stable-25_05"
