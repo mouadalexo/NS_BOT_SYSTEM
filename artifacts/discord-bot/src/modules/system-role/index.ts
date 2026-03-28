@@ -8,6 +8,7 @@ import {
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { isMainGuild } from "../../utils/guildFilter.js";
 
 const BOT_ROLE_NAME = "🌙 Night Stars Bot";
 
@@ -105,11 +106,13 @@ async function protectBotRole(guild: Guild) {
 
 export function registerSystemRoleModule(client: Client) {
   client.on("guildCreate", async (guild) => {
+    if (!isMainGuild(guild.id)) return;
     console.log(`[SystemRole] Bot joined guild: ${guild.name} (${guild.id})`);
     await createBotRole(guild, client);
   });
 
   client.on("guildUpdate", async (oldGuild, newGuild) => {
+    if (!isMainGuild(newGuild.id)) return;
     if (oldGuild.ownerId !== newGuild.ownerId) {
       await protectBotRole(newGuild);
     }

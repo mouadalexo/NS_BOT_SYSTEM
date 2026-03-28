@@ -18,6 +18,7 @@ import {
   TextChannel,
   ChannelType,
 } from "discord.js";
+import { isMainGuild } from "../utils/guildFilter.js";
 import {
   openVerifyPanel,
   handleVerifyPanelSelect,
@@ -171,6 +172,7 @@ export async function registerPanelCommands(client: Client) {
 
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.guild) return;
+    if (!isMainGuild(interaction.guild.id)) return;
 
     if (interaction.isChatInputCommand()) {
       const name = interaction.commandName;

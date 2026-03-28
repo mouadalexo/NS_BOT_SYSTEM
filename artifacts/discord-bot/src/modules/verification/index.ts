@@ -17,6 +17,7 @@ import {
 import { db } from "@workspace/db";
 import { botConfigTable, verificationSessionsTable } from "@workspace/db";
 import { eq, and, count } from "drizzle-orm";
+import { isMainGuild } from "../../utils/guildFilter.js";
 
 const BRAND = 0x5000ff;
 
@@ -168,6 +169,7 @@ export async function deployVerificationPanel(channel: TextChannel) {
 export function registerVerificationModule(client: Client) {
   client.on("interactionCreate", async (interaction) => {
     if (!interaction.guild) return;
+    if (!isMainGuild(interaction.guild.id)) return;
 
     if (interaction.isButton() && interaction.customId === "verification_start") {
       const modal = await buildVerificationModal(interaction.guild.id);

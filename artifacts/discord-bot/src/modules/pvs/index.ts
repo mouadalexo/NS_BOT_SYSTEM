@@ -12,6 +12,7 @@ import {
 import { db } from "@workspace/db";
 import { pvsVoicesTable, pvsKeysTable, botConfigTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { isMainGuild } from "../../utils/guildFilter.js";
 
 const PVS_PREFIX = "=";
 const MANAGER_PREFIX = "+";
@@ -113,6 +114,7 @@ export function registerPVSModule(client: Client) {
     try {
       if (message.author.bot) return;
       if (!message.guild) return;
+      if (!isMainGuild(message.guild.id)) return;
 
       const member = message.member;
       if (!member) return;

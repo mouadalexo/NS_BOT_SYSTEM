@@ -2,6 +2,7 @@ import { Client, Message, EmbedBuilder, TextChannel } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable, ctpCategoriesTable, ctpCooldownsTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
+import { isMainGuild } from "../../utils/guildFilter.js";
 
 const CTP_COMMAND = "-tag";
 
@@ -18,6 +19,7 @@ export function registerCTPModule(client: Client) {
     try {
     if (message.author.bot) return;
     if (!message.guild) return;
+    if (!isMainGuild(message.guild.id)) return;
     if (message.content.toLowerCase().trim() !== CTP_COMMAND) return;
 
     const member = message.member;
