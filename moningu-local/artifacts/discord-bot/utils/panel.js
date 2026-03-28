@@ -19,17 +19,12 @@ const CATEGORY_ICONS = {
   status:       '💬',
 };
 
-async function getCategoryIcon(guild, cat) {
+function getCategoryIcon(cat) {
   if (cat.icon) {
-    // custom emoji object → fetch and render properly
+    // custom emoji object → placeholders don't render <:name:id> format
+    // so use emoji name (which shows as text) or fallback to unicode
     if (typeof cat.icon === 'object') {
-      try {
-        const emoji = await guild.emojis.fetch(cat.icon.id);
-        return emoji ? emoji.toString() : cat.icon.name;
-      } catch {
-        // fallback to emoji name if fetch fails
-        return cat.icon.name || '❓';
-      }
+      return cat.icon.name || '❓';
     }
     return cat.icon;
   }
@@ -128,7 +123,7 @@ async function buildPanel(dynamicRoles, guild) {
         .setEmoji('💡')
     );
 
-    const icon = await getCategoryIcon(guild, cat);
+    const icon = getCategoryIcon(cat);
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`cat:${cat.id}`)
       .setPlaceholder(`${icon}  ${cat.placeholder || cat.name}`)
