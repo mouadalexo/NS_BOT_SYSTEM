@@ -182,9 +182,10 @@ function categoryEditorEmbed(cat, note = null) {
     : ['_No options yet._'];
 
   const limitText = cat.roleLimit ? `\n**Role Limit:** max ${cat.roleLimit} per member` : '';
+  const iconText  = cat.icon ? ` ${displayEmoji(cat.icon)}` : '';
 
   return new EmbedBuilder()
-    .setTitle(`✏️ Editing: ${cat.name}`)
+    .setTitle(`✏️ Editing:${iconText} ${cat.name}`)
     .setDescription(
       (note ? `${note}\n\n` : '') +
       `**Options (${cat.options.length}/${MAX_OPTIONS}):**${limitText}\n${lines.join('\n')}`
@@ -195,6 +196,7 @@ function categoryEditorEmbed(cat, note = null) {
 function categoryEditorRows(catId, cat) {
   const optCount = cat.options.length;
   return [
+    // Row 1 — Options management
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
         .setCustomId(`set_add_option:${catId}`)
@@ -203,7 +205,7 @@ function categoryEditorRows(catId, cat) {
         .setDisabled(optCount >= MAX_OPTIONS),
       new ButtonBuilder()
         .setCustomId(`set_remove_option:${catId}`)
-        .setLabel('🗑️ Remove Option')
+        .setLabel('🗑️ Remove')
         .setStyle(ButtonStyle.Danger)
         .setDisabled(optCount === 0),
       new ButtonBuilder()
@@ -212,16 +214,25 @@ function categoryEditorRows(catId, cat) {
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(optCount < 2),
       new ButtonBuilder()
-        .setCustomId(`set_set_limit:${catId}`)
-        .setLabel('🔢 Set Limit')
-        .setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder()
         .setCustomId(`set_change_emoji:${catId}`)
-        .setLabel('🎨 Change Emoji')
+        .setLabel('🎨 Option Emoji')
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(optCount === 0),
     ),
+    // Row 2 — Category settings + navigation
     new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`set_rename_cat:${catId}`)
+        .setLabel('✏️ Rename')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`set_cat_icon:${catId}`)
+        .setLabel('🖼️ Category Icon')
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId(`set_set_limit:${catId}`)
+        .setLabel('🔢 Limit')
+        .setStyle(ButtonStyle.Secondary),
       new ButtonBuilder()
         .setCustomId(`set_preview_cat:${catId}`)
         .setLabel('👁️ Preview')
@@ -304,6 +315,58 @@ function buildEditEmojiPickerRows(catId, optIndex, guild, page) {
       .setDisabled(safePageNum === 0),
     new ButtonBuilder()
       .setCustomId(`set_emoji_edit_next:${catId}:${optIndex}:${safePageNum}`)
+      .setLabel('Next →')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePageNum >= totalPages - 1),
+    new ButtonBuilder()
+      .setCustomId(`set_back_edit:${catId}`)
+      .setLabel('← Cancel')
+      .setStyle(ButtonStyle.Secondary),
+  ];
+
+  return [
+    new ActionRowBuilder().addComponents(select),
+    new ActionRowBuilder().addComponents(navButtons),
+  ];
+}
+
+// ─── Paged emoji picker for category icon ────────────────────────────────────
+
+function buildCatIconPickerRows(catId, guild, page) {
+  const allEmojis = [...guild.emojis.cache.values()];
+  const totalPages = Math.max(1, Math.ceil(allEmojis.length / PER_PAGE));
+  const safePageNum = Math.min(Math.max(page, 0), totalPages - 1);
+  const pageEmojis = allEmojis.slice(safePageNum * PER_PAGE, (safePageNum + 1) * PER_PAGE);
+
+  const options = [
+    new StringSelectMenuOptionBuilder()
+      .setLabel('No Icon')
+      .setValue('none')
+      .setDescription('Use the default icon for this category'),
+  ];
+
+  for (const e of pageEmojis) {
+    options.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(e.name.slice(0, 25))
+        .setValue(e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`)
+        .setEmoji({ id: e.id, name: e.name, animated: e.animated })
+    );
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`set_pick_cat_icon:${catId}:${safePageNum}`)
+    .setPlaceholder(totalPages > 1 ? `Server emojis — page ${safePageNum + 1}/${totalPages}` : 'Choose a category icon...')
+    .addOptions(options);
+
+  const navButtons = [
+    new ButtonBuilder()
+      .setCustomId(`set_cat_icon_prev:${catId}:${safePageNum}`)
+      .setLabel('← Prev')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePageNum === 0),
+    new ButtonBuilder()
+      .setCustomId(`set_cat_icon_next:${catId}:${safePageNum}`)
       .setLabel('Next →')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(safePageNum >= totalPages - 1),
@@ -886,6 +949,70 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
+  // ── Rename category → show modal ──
+  if (id.startsWith('set_rename_cat:')) {
+    const catId = id.slice('set_rename_cat:'.length);
+    const cat = categories.find(c => c.id === catId);
+
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_rename_cat:${catId}`)
+      .setTitle(`Rename: ${cat.name.slice(0, 30)}`);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('cat_new_name')
+          .setLabel('New Category Name')
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(50)
+          .setRequired(true)
+          .setValue(cat.name)
+      ),
+    );
+
+    await interaction.showModal(modal);
+    return;
+  }
+
+  // ── Category icon → show server emoji picker ──
+  if (id.startsWith('set_cat_icon:')) {
+    const catId = id.slice('set_cat_icon:'.length);
+    const cat = categories.find(c => c.id === catId);
+
+    await interaction.guild.emojis.fetch().catch(() => {});
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle(`🖼️ Category Icon — ${cat.name}`)
+        .setDescription('Pick a server emoji to use as the icon for this category.\nSelect **"No Icon"** to reset to the default.')
+        .setColor(0x5865F2)],
+      components: buildCatIconPickerRows(catId, interaction.guild, 0),
+    });
+    return;
+  }
+
+  // ── Category icon page navigation ──
+  if (id.startsWith('set_cat_icon_prev:') || id.startsWith('set_cat_icon_next:')) {
+    const isPrev = id.startsWith('set_cat_icon_prev:');
+    const rest = id.slice(isPrev ? 'set_cat_icon_prev:'.length : 'set_cat_icon_next:'.length);
+    const lastColon = rest.lastIndexOf(':');
+    const catId = rest.slice(0, lastColon);
+    const page = parseInt(rest.slice(lastColon + 1));
+    const cat = categories.find(c => c.id === catId);
+    const newPage = isPrev ? page - 1 : page + 1;
+
+    await interaction.guild.emojis.fetch().catch(() => {});
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle(`🖼️ Category Icon — ${cat.name}`)
+        .setDescription('Pick a server emoji to use as the icon for this category.\nSelect **"No Icon"** to reset to the default.')
+        .setColor(0x5865F2)],
+      components: buildCatIconPickerRows(catId, interaction.guild, newPage),
+    });
+    return;
+  }
+
   // ── Back to category editor ──
   if (id.startsWith('set_back_edit:')) {
     const catId = id.slice('set_back_edit:'.length);
@@ -1074,6 +1201,29 @@ async function handleSetSelect(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
+  // ── Category icon picked ──
+  if (id.startsWith('set_pick_cat_icon:')) {
+    const rest = id.slice('set_pick_cat_icon:'.length);
+    const lastColon = rest.lastIndexOf(':');
+    const catId = rest.slice(0, lastColon);
+    const cat = categories.find(c => c.id === catId);
+
+    const selected = interaction.values[0];
+    const icon = selected === 'none' ? null : parseEmoji(selected);
+    cat.icon = icon;
+    saveStorage();
+
+    const note = icon
+      ? `✅ Category icon set to ${displayEmoji(icon)}.`
+      : `✅ Category icon reset to default.`;
+
+    await interaction.update({
+      embeds: [categoryEditorEmbed(cat, note)],
+      components: categoryEditorRows(catId, cat),
+    });
+    return;
+  }
+
   // ── Emoji picker — user selected a server emoji ──
   if (id.startsWith('set_pick_emoji:')) {
     const catId = id.slice('set_pick_emoji:'.length);
@@ -1168,6 +1318,29 @@ async function handleSetModal(interaction, dynamicRoles, saveStorage) {
         )
         .setColor(0x5865F2)],
       components: buildEmojiPickerComponents(catId, interaction.guild),
+    });
+    return;
+  }
+
+  // ── Rename category modal ──
+  if (id.startsWith('modal_rename_cat:')) {
+    const catId = id.slice('modal_rename_cat:'.length);
+    const cat = categories.find(c => c.id === catId);
+
+    const newName = interaction.fields.getTextInputValue('cat_new_name').trim();
+    if (!newName) {
+      await interaction.reply({ content: '❌ Category name cannot be empty.', ephemeral: true });
+      return;
+    }
+
+    const oldName = cat.name;
+    cat.name = newName;
+    cat.placeholder = newName;
+    saveStorage();
+
+    await interaction.update({
+      embeds: [categoryEditorEmbed(cat, `✅ Renamed **${oldName}** → **${newName}**.`)],
+      components: categoryEditorRows(catId, cat),
     });
     return;
   }

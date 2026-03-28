@@ -19,8 +19,13 @@ const CATEGORY_ICONS = {
   status:       '💬',
 };
 
-function getCategoryIcon(catId) {
-  return CATEGORY_ICONS[catId] || '🎭';
+function getCategoryIcon(cat) {
+  if (cat.icon) {
+    // custom emoji object → format as string for placeholder use
+    if (typeof cat.icon === 'object') return `<:${cat.icon.name}:${cat.icon.id}>`;
+    return cat.icon;
+  }
+  return CATEGORY_ICONS[cat.id] || '🎭';
 }
 
 function resolveEmoji(emoji) {
@@ -107,7 +112,7 @@ async function buildPanel(dynamicRoles, guild) {
         .setEmoji('💡')
     );
 
-    const icon = getCategoryIcon(cat.id);
+    const icon = getCategoryIcon(cat);
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`cat:${cat.id}`)
       .setPlaceholder(`${icon}  ${cat.placeholder || cat.name}`)
