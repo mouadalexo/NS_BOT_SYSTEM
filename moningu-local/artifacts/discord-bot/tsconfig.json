@@ -1,0 +1,11 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "moduleResolution": "bundler",
+    "noUnusedLocals": false
+  },
+  "include": ["src/**/*"],
+  "references": [
+    { "path": "../../lib/db" }
+  ]
+}

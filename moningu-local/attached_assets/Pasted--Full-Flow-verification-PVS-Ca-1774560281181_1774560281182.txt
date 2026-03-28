@@ -1,0 +1,127 @@
+تمام 💪 دابا غادي نرتب لك Full Flow للنظام كامل، خطوة بخطوة من دخول العضو، verification، PVS، حتى Call to Play، باش يكون Prompt جاهز للمطور على Replit ويقدر يطبق كل شيء مباشرة.
+
+⸻
+
+🌟 Night Stars Bot – Full Flow
+
+⸻
+
+1️⃣ Member Joins Server
+	1.	Member joins → bot assigns Unverified Role automatically.
+	2.	Bot creates private verification channel (only visible to member + Verificators + Bot).
+	3.	Bot prompts member to answer 5 verification questions exactly:
+	1.	Wach nta mghribi ?
+	2.	Mnin dkhlti l server ?
+	3.	3lach dkhlti l server ?
+	4.	Ch7al f3mrk ?
+	5.	Chno lhaja libghiti tl9aha f server ?
+
+⸻
+
+2️⃣ Verification Logs
+	•	Once member submits answers, bot sends embed to #verification-logs:
+	•	Member info & ID
+	•	Answers to all 5 questions
+	•	Footer: “Verificators: choose an action”
+	•	Buttons: ✅ Accept, ❌ Deny, ⛓ Jail, 🎫 Open Ticket
+
+Buttons Behavior
+
+Button	Action
+✅ Accept	Assign Verified Role, remove Unverified Role, auto-delete private channel
+❌ Deny	Keep Unverified, optional DM reason, auto-delete private channel
+⛓ Jail	Assign pre-existing Jail Role, log action
+🎫 Open Ticket	Open ticket in Assistance Category, include member info, log ticket creation
+
+	•	Only Verificators see and can press buttons
+	•	Buttons disabled after one click
+	•	Optional auto-delete if no action taken
+
+⸻
+
+3️⃣ Private Voice System (PVS)
+
+Prefix: =
+	•	Voice Owner can create private voice in Premium Voices category.
+	•	Voice Owner gets full control permissions automatically.
+
+PVS Commands (Text Commands)
+
+Command	Behavior	Response
+=key @user	Toggle permission to join private voice	✅ @user got the key successfully! / ⚠️ @user lost the key!
+=clear keys	Remove all keys from private voice	✅ All keys cleared successfully!
+=see keys	List all users with keys	✅ Current keys: @user1, @user2…
+=rename New Name	Rename the private voice	✅ Voice renamed successfully!
+
+	•	Messages ephemeral, only Voice Owner sees them
+	•	Footer: Dismiss, blue
+
+⸻
+
+4️⃣ Call to Play (CTP) – Category-Based
+
+Prefix: -
+
+4.1 Setup by Game Manager
+
+Command: /setup-category or equivalent
+
+Parameters:
+	1.	Category ID → category containing all voices for the game
+	2.	Game Name → e.g., Valorant, CSGO, eFootball
+	3.	Game Role → role to ping
+	4.	Cooldown Time → in seconds
+	5.	Ping Message (optional) → if empty → bot sends the member’s sentence (first sentence only)
+
+4.2 Call to Play Flow
+	1.	Member in any voice under category types:
+
+-we need 1 player
+
+
+	2.	Bot checks:
+	•	Voice under category
+	•	Game and Game Role linked
+	•	Cooldown active or not
+	3.	Bot posts short, professional message:
+	•	Pings Game Role only
+	•	Uses custom ping message if provided, else member’s first sentence
+	•	Optional embed, no emoji
+
+4.3 Game Manager Permissions
+	•	Modify category → game mapping
+	•	Adjust cooldown per category/game
+	•	Customize ping message
+	•	Stop mentions temporarily or override cooldown
+
+⸻
+
+5️⃣ Summary of Permissions
+
+Role	Allowed Actions
+Member	Answer verification questions, use CTP command in their category
+Voice Owner	Manage private voice using =key, =clear keys, =see keys, =rename
+Verificators	Manage verification logs/buttons
+Game Managers	Setup category-game mapping, modify cooldown, edit ping message
+Staff/Admin	Full access to all systems, override any permissions
+
+
+⸻
+
+6️⃣ Notes & Extras
+	•	Messages are clean, professional, ephemeral where needed
+	•	Easy to extend: leveling system, premium voice logs, additional games, etc.
+	•	Modular design: PVS, Verification, CTP all separate but can interact smoothly
+	•	Cooldowns applied per category (CTP), not per user
+	•	All setups stored in database or JSON for persistence
+
+⸻
+
+إذا بغيت، المرحلة التالية نقدر ندير diagram flow بصري يوضح:
+	1.	دخول العضو → Verification → Logs → Accept/Deny/Jail/Ticket
+	2.	PVS commands → Voice permissions
+	3.	Call to Play → Category mapping → Ping roles
+
+باش المطور يكون عنده كل شيء واضح بصرياً مع الـ Prompt النصي.
+
+هل نبدا ندير هاد الـ diagram دابا؟

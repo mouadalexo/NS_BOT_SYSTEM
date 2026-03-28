@@ -1,0 +1,147 @@
+تمام 😎 دابا غادي نرتب لك Prompt كامل ومنسق لكل شيء للنظام بطريقة مفصلة، جاهز لإرسال المطور على Replit. غادي يشمل كل شيء: PVS, Verification, Logs, Call to Play (category-based), مع كل /commands وtext commands وتفاصيل التشغيل.
+
+⸻
+
+📝 Night Stars Bot – Full System Prompt for Replit Developer
+
+⸻
+
+1️⃣ Private Voice System (PVS)
+
+Prefix: =
+
+Purpose:
+	•	Allows Voice Owners to create and manage their private voice channels under Premium Voices category.
+	•	Voice Owners can manage access permissions (keys) for users.
+	•	Messages are ephemeral and professional, only visible to Voice Owner.
+
+1.1 Commands for Voice Owners (Text Commands)
+
+Command	Description	Response (Ephemeral)
+=key @user	Toggle join permission for a user in the private voice.  If user has it → remove, else → give	✅ @user got the key successfully!  ⚠️ @user lost the key!  Footer: Dismiss, Blue
+=clear keys	Remove all keys (permissions) from all users in the private voice	✅ All keys cleared successfully!  Footer: Dismiss, Blue
+=see keys	List all users who currently have keys to join	✅ Current keys: @user1, @user2…  Footer: Dismiss, Blue
+=rename New Name	Rename the private voice	✅ Voice renamed successfully!  Footer: Dismiss, Blue
+
+1.2 Behavior
+	•	Only Voice Owner can use these commands on their voice.
+	•	Bot automatically assigns full control permissions to the Voice Owner.
+	•	Messages are ephemeral (visible only to Voice Owner).
+	•	Footer: “Dismiss” in blue.
+	•	Bot should prevent Voice Owner from accidentally removing their own permissions.
+
+⸻
+
+2️⃣ Verification System
+
+Purpose:
+	•	Ensure new members are verified before accessing the server fully.
+	•	Staff (Verificators) can manage the process with logs and buttons.
+
+2.1 Questions (must match exactly as user provided)
+	1.	Wach nta mghribi ?
+	2.	Mnin dkhlti l server ?
+	3.	3lach dkhlti l server ?
+	4.	Ch7al f3mrk ?
+	5.	Chno lhaja libghiti tl9aha f server ?
+
+2.2 Flow
+	1.	Member joins → Bot creates a private verification channel visible to:
+	•	Member
+	•	Verificators
+	•	Bot
+	2.	Member answers the 5 questions (text input).
+	3.	Bot posts an embed in #verification-logs with:
+	•	Member mention & info
+	•	Answers to all 5 questions
+	•	Buttons for Verificators: ✅ Accept, ❌ Deny, ⛓ Jail, 🎫 Open Ticket
+
+2.3 Buttons Behavior
+
+Button	Action
+✅ Accept	- Assign Verified Role, remove Unverified Role  - Auto-delete private verification channel  - Optional welcome message
+❌ Deny	- Keep Unverified Role  - Optional DM with reason  - Auto-delete verification channel
+⛓ Jail	- Assign pre-existing Jail Role  - Log action in #verification-logs
+🎫 Open Ticket	- Open ticket in Assistance category  - Info about member passed automatically  - Log ticket creation for Verificators
+
+2.4 Extra Notes
+	•	Only Verificators can see and press the buttons.
+	•	Buttons disabled automatically after use to prevent duplicates.
+	•	Optional: auto-delete logs after certain time if no action taken.
+	•	All messages are professional, clean embeds with footer: “Verificators: choose an action.”
+
+⸻
+
+3️⃣ Call to Play (CTP) – Category-Based
+
+Prefix: -
+
+Purpose:
+	•	Allow members to quickly request players for games in voice channels.
+	•	Messages ping only the game role.
+	•	Works per category, not individual voice channels.
+
+3.1 Setup by Game Managers
+
+Command: /setup-category or equivalent text command for staff
+
+Parameters:
+	1.	Category ID – The category containing the relevant voices.
+	2.	Game Name – Name of the game (e.g., Valorant, CSGO, eFootball).
+	3.	Game Role – Role that will be pinged when a call is made.
+	4.	Cooldown Time – Time in seconds before another call can be made in this category.
+	5.	Ping Message (optional) – Custom message.
+	•	If left empty → bot sends the full sentence typed by member (only first sentence).
+
+3.2 Call to Play Flow
+	1.	Member types:
+
+-we need 1 player
+
+
+	2.	Bot checks:
+	•	Caller is in a voice channel under the specified category.
+	•	Game and Game Role associated with category.
+	•	Cooldown for the category is active or not.
+	3.	Bot posts message:
+	•	Custom message if provided.
+	•	Else, uses member’s sentence (first sentence only).
+	•	Pings only the game role.
+	•	Short, professional, optional embed, no emoji.
+
+3.3 Game Manager Permissions
+	•	Staff or assigned Game Managers can:
+	•	Assign or update category → game mapping
+	•	Change cooldowns per category/game
+	•	Customize ping message per game
+	•	Stop mentions temporarily or override cooldowns
+
+3.4 Extra Notes
+	•	Works automatically for all voices under a category.
+	•	No need to assign per voice individually.
+	•	Clean, professional, efficient, and scalable.
+
+⸻
+
+4️⃣ Modular & Professional Design
+	•	Separate modules for:
+	1.	PVS (Private Voice System)
+	2.	Verification System + Logs + Buttons
+	3.	CTP (Call to Play) – Category-based
+	•	Permissions:
+	•	Voice Owner → PVS commands only for their voice.
+	•	Verificators → manage verification logs/buttons.
+	•	Game Managers → manage category-game setup & calls.
+	•	Members → only allowed to use commands in their category / verification.
+	•	Messages:
+	•	PVS → ephemeral, footer Dismiss, blue embed.
+	•	Verification → embed with answers, buttons, footer instructions.
+	•	CTP → short, professional, ping only game role.
+	•	Future Proof:
+	•	Can add leveling system, extra logging, premium voice features, etc.
+
+⸻
+
+إذا بغيت، نقدر نكمل المرحلة الأخيرة: نكتب Flow كامل من دخول العضو، verification، PVS, CTP، كل شيء مترابط، بحيث يكون Prompt جاهز تمامًا للمطور على Replit ويعمل مباشرة.
+
+هل نكمل هاد المرحلة دابا؟
