@@ -7,7 +7,6 @@ import {
   ActivityType,
 } from "discord.js";
 import { createServer } from "http";
-import { registerVerificationModule } from "./modules/verification/index.js";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
@@ -123,7 +122,6 @@ if (!token) {
 
   setImmediate(() => {
     registerSystemRoleModule(client);
-    registerVerificationModule(client);
     registerPVSModule(client);
     registerCTPModule(client);
     registerStatsModule(client);
