@@ -21,16 +21,9 @@ const CATEGORY_ICONS = {
 
 async function getCategoryIcon(guild, cat) {
   if (cat.icon) {
-    // custom emoji object → fetch from guild to get proper rendering
+    // custom emoji object → show emoji name (placeholders can't render <:name:id>)
     if (typeof cat.icon === 'object') {
-      try {
-        const emoji = await guild.emojis.fetch(cat.icon.id);
-        // toString() gives <:name:id> format which Discord can render
-        return emoji.toString();
-      } catch {
-        // If fetch fails, fall back to emoji name
-        return cat.icon.name || '❓';
-      }
+      return cat.icon.name || '❓';
     }
     // unicode emoji or string
     return cat.icon;
