@@ -17,6 +17,9 @@ const {
 const MAX_CATEGORIES = 5;
 const MAX_OPTIONS = 20;
 
+// ─── In-memory store for emoji picker flow ───────────────────────────────────
+const pendingOptions = new Map(); // `${userId}:${catId}` → { label, roleId }
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function slugify(str) {
@@ -70,8 +73,8 @@ function mainMenuEmbed(categories, dynamicRoles) {
     .setColor(0x5865F2);
 }
 
-function mainMenuRow(categories) {
-  return new ActionRowBuilder().addComponents(
+function mainMenuRows(categories) {
+  const row1 = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId('set_add_category')
       .setLabel('➕ Add Category')
@@ -97,6 +100,15 @@ function mainMenuRow(categories) {
       .setLabel('⚙️ Settings')
       .setStyle(ButtonStyle.Secondary),
   );
+
+  const row2 = new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('set_auto_setup')
+      .setLabel('🔍 Auto-Detect Roles')
+      .setStyle(ButtonStyle.Success),
+  );
+
+  return [row1, row2];
 }
 
 // ─── Settings ────────────────────────────────────────────────────────────────
@@ -217,6 +229,37 @@ function categoryEditorRows(catId, cat) {
   ];
 }
 
+// ─── Server emoji picker builder ─────────────────────────────────────────────
+
+function buildEmojiPickerComponents(catId, guild) {
+  const guildEmojis = [...guild.emojis.cache.values()].slice(0, 24);
+
+  const options = [
+    new StringSelectMenuOptionBuilder()
+      .setLabel('No Emoji')
+      .setValue('none')
+      .setDescription('Add this option without an emoji'),
+  ];
+
+  for (const e of guildEmojis) {
+    options.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(e.name.slice(0, 25))
+        .setValue(e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`)
+        .setEmoji({ id: e.id, name: e.name, animated: e.animated })
+    );
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`set_pick_emoji:${catId}`)
+    .setPlaceholder('Choose a server emoji...')
+    .addOptions(options);
+
+  return [
+    new ActionRowBuilder().addComponents(select),
+  ];
+}
+
 // ─── /set slash command ───────────────────────────────────────────────────────
 
 async function handleSetCommand(interaction, dynamicRoles) {
@@ -229,7 +272,7 @@ async function handleSetCommand(interaction, dynamicRoles) {
 
   await interaction.reply({
     embeds: [mainMenuEmbed(categories, dynamicRoles)],
-    components: [mainMenuRow(categories)],
+    components: mainMenuRows(categories),
     ephemeral: true,
   });
 }
@@ -244,7 +287,7 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
   if (id === 'set_back_main') {
     await interaction.update({
       embeds: [mainMenuEmbed(categories, dynamicRoles)],
-      components: [mainMenuRow(categories)],
+      components: mainMenuRows(categories),
     });
     return;
   }
@@ -447,7 +490,115 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
-  // ── Add option → show modal ──
+  // ── Auto-Detect Roles ──
+  if (id === 'set_auto_setup') {
+    await interaction.deferUpdate();
+
+    try {
+      await interaction.guild.roles.fetch();
+      const allRoles = interaction.guild.roles.cache;
+
+      const findRole = (name) =>
+        allRoles.find(r => r.name.toLowerCase().trim() === name.toLowerCase().trim());
+
+      let matched = 0;
+      let created = 0;
+      let skipped = 0;
+      const details = [];
+
+      for (const cat of dynamicRoles.categories) {
+        const isPcGames = cat.id === 'pc_games';
+
+        for (const opt of cat.options) {
+          const found = findRole(opt.label);
+          if (found) {
+            if (opt.roleId !== found.id) {
+              opt.roleId = found.id;
+              matched++;
+              details.push(`✅ \`${opt.label}\` → linked`);
+            }
+          } else if (isPcGames) {
+            try {
+              const newRole = await interaction.guild.roles.create({
+                name: opt.label,
+                reason: 'Auto-setup: PC game role',
+              });
+              opt.roleId = newRole.id;
+              created++;
+              details.push(`🆕 \`${opt.label}\` → created`);
+            } catch (e) {
+              skipped++;
+              details.push(`⚠️ \`${opt.label}\` → failed to create`);
+            }
+          } else {
+            skipped++;
+          }
+        }
+      }
+
+      saveStorage();
+
+      const summaryLines = [];
+      if (matched > 0) summaryLines.push(`✅ **${matched}** role(s) matched and linked`);
+      if (created > 0) summaryLines.push(`🆕 **${created}** PC game role(s) created`);
+      if (skipped > 0) summaryLines.push(`⏭️ **${skipped}** role(s) not found on this server`);
+      if (summaryLines.length === 0) summaryLines.push('No changes — all roles were already up to date.');
+
+      const detailText = details.length ? `\n\n${details.slice(0, 15).join('\n')}` : '';
+
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('🔍 Auto-Setup Complete')
+            .setDescription(summaryLines.join('\n') + detailText)
+            .setColor(0x57F287),
+          mainMenuEmbed(dynamicRoles.categories, dynamicRoles),
+        ],
+        components: mainMenuRows(dynamicRoles.categories),
+      });
+    } catch (e) {
+      console.error('Auto-setup error:', e);
+      await interaction.editReply({
+        embeds: [
+          new EmbedBuilder()
+            .setTitle('❌ Auto-Setup Failed')
+            .setDescription(e.message)
+            .setColor(0xED4245),
+        ],
+        components: mainMenuRows(dynamicRoles.categories),
+      });
+    }
+    return;
+  }
+
+  // ── Skip emoji picker ──
+  if (id.startsWith('set_skip_emoji:')) {
+    const catId = id.slice('set_skip_emoji:'.length);
+    const cat = categories.find(c => c.id === catId);
+    const key = `${interaction.user.id}:${catId}`;
+    const pending = pendingOptions.get(key);
+
+    if (!pending) {
+      await interaction.update({
+        embeds: [categoryEditorEmbed(cat, '❌ Session expired. Please try adding the option again.')],
+        components: categoryEditorRows(catId, cat),
+      });
+      return;
+    }
+
+    pendingOptions.delete(key);
+    cat.options.push({ label: pending.label, emoji: null, roleId: pending.roleId });
+    saveStorage();
+
+    const note = `✅ Added **${pending.label}** (ID: \`${pending.roleId}\`)`;
+    await interaction.update({
+      embeds: [categoryEditorEmbed(cat, note)],
+      components: categoryEditorRows(catId, cat),
+    });
+    return;
+  }
+
+  // ── Add option → show modal (no emoji field — picked separately) ──
   if (id.startsWith('set_add_option:')) {
     const catId = id.slice('set_add_option:'.length);
 
@@ -464,15 +615,6 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
           .setStyle(TextInputStyle.Short)
           .setMaxLength(50)
           .setRequired(true)
-      ),
-      new ActionRowBuilder().addComponents(
-        new TextInputBuilder()
-          .setCustomId('opt_emoji')
-          .setLabel('Emoji — unicode or server <:name:id>')
-          .setPlaceholder('e.g. 🎮  or  <:valorant:1234567890>')
-          .setStyle(TextInputStyle.Short)
-          .setMaxLength(100)
-          .setRequired(false)
       ),
       new ActionRowBuilder().addComponents(
         new TextInputBuilder()
@@ -705,7 +847,7 @@ async function handleSetSelect(interaction, dynamicRoles, saveStorage) {
         new EmbedBuilder().setTitle('✅ Category Removed').setDescription(`**${cat.name}** has been removed.`).setColor(0x57F287),
         mainMenuEmbed(dynamicRoles.categories, dynamicRoles),
       ],
-      components: [mainMenuRow(dynamicRoles.categories)],
+      components: mainMenuRows(dynamicRoles.categories),
     });
     return;
   }
@@ -765,6 +907,37 @@ async function handleSetSelect(interaction, dynamicRoles, saveStorage) {
     });
     return;
   }
+
+  // ── Emoji picker — user selected a server emoji ──
+  if (id.startsWith('set_pick_emoji:')) {
+    const catId = id.slice('set_pick_emoji:'.length);
+    const cat = categories.find(c => c.id === catId);
+    const key = `${interaction.user.id}:${catId}`;
+    const pending = pendingOptions.get(key);
+
+    if (!pending) {
+      await interaction.update({
+        embeds: [categoryEditorEmbed(cat, '❌ Session expired. Please try adding the option again.')],
+        components: categoryEditorRows(catId, cat),
+      });
+      return;
+    }
+
+    const selected = interaction.values[0];
+    const emoji = selected === 'none' ? null : parseEmoji(selected);
+
+    pendingOptions.delete(key);
+    cat.options.push({ label: pending.label, emoji, roleId: pending.roleId });
+    saveStorage();
+
+    const note = `✅ Added **${pending.label}** ${displayEmoji(emoji)} (ID: \`${pending.roleId}\`)`.trim();
+
+    await interaction.update({
+      embeds: [categoryEditorEmbed(cat, note)],
+      components: categoryEditorRows(catId, cat),
+    });
+    return;
+  }
 }
 
 // ─── Modal submissions ────────────────────────────────────────────────────────
@@ -791,14 +964,12 @@ async function handleSetModal(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
-  // ── Add option modal ──
+  // ── Add option modal → resolve role, then show server emoji picker ──
   if (id.startsWith('modal_add_option:')) {
     const catId = id.slice('modal_add_option:'.length);
     const cat = categories.find(c => c.id === catId);
 
     const label = interaction.fields.getTextInputValue('opt_label').trim();
-    const emojiRaw = interaction.fields.getTextInputValue('opt_emoji').trim();
-    const emoji = parseEmoji(emojiRaw);
     let roleId = interaction.fields.getTextInputValue('opt_role_id').trim() || null;
 
     if (!roleId) {
@@ -818,14 +989,19 @@ async function handleSetModal(interaction, dynamicRoles, saveStorage) {
       }
     }
 
-    cat.options.push({ label, emoji, roleId });
-    saveStorage();
-
-    const note = `✅ Added **${label}** ${displayEmoji(emoji)} (ID: \`${roleId}\`)`.trim();
+    // Store pending option and show emoji picker
+    const key = `${interaction.user.id}:${catId}`;
+    pendingOptions.set(key, { label, roleId });
 
     await interaction.update({
-      embeds: [categoryEditorEmbed(cat, note)],
-      components: categoryEditorRows(catId, cat),
+      embeds: [new EmbedBuilder()
+        .setTitle('🎨 Pick an Emoji')
+        .setDescription(
+          `Choose a **server emoji** for **${label}**.\n` +
+          `Select **"No Emoji"** at the top of the list to skip.`
+        )
+        .setColor(0x5865F2)],
+      components: buildEmojiPickerComponents(catId, interaction.guild),
     });
     return;
   }
