@@ -215,6 +215,11 @@ function categoryEditorRows(catId, cat) {
         .setCustomId(`set_set_limit:${catId}`)
         .setLabel('🔢 Set Limit')
         .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`set_change_emoji:${catId}`)
+        .setLabel('🎨 Change Emoji')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(optCount === 0),
     ),
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -257,6 +262,60 @@ function buildEmojiPickerComponents(catId, guild) {
 
   return [
     new ActionRowBuilder().addComponents(select),
+  ];
+}
+
+// ─── Paged emoji picker for editing existing options ──────────────────────────
+
+const PER_PAGE = 24; // 1 slot reserved for "No Emoji"
+
+function buildEditEmojiPickerRows(catId, optIndex, guild, page) {
+  const allEmojis = [...guild.emojis.cache.values()];
+  const totalPages = Math.max(1, Math.ceil(allEmojis.length / PER_PAGE));
+  const safePageNum = Math.min(Math.max(page, 0), totalPages - 1);
+  const pageEmojis = allEmojis.slice(safePageNum * PER_PAGE, (safePageNum + 1) * PER_PAGE);
+
+  const options = [
+    new StringSelectMenuOptionBuilder()
+      .setLabel('No Emoji')
+      .setValue('none')
+      .setDescription('Remove the emoji from this option'),
+  ];
+
+  for (const e of pageEmojis) {
+    options.push(
+      new StringSelectMenuOptionBuilder()
+        .setLabel(e.name.slice(0, 25))
+        .setValue(e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`)
+        .setEmoji({ id: e.id, name: e.name, animated: e.animated })
+    );
+  }
+
+  const select = new StringSelectMenuBuilder()
+    .setCustomId(`set_pick_emoji_edit:${catId}:${optIndex}:${safePageNum}`)
+    .setPlaceholder(totalPages > 1 ? `Server emojis — page ${safePageNum + 1}/${totalPages}` : 'Choose a server emoji...')
+    .addOptions(options);
+
+  const navButtons = [
+    new ButtonBuilder()
+      .setCustomId(`set_emoji_edit_prev:${catId}:${optIndex}:${safePageNum}`)
+      .setLabel('← Prev')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePageNum === 0),
+    new ButtonBuilder()
+      .setCustomId(`set_emoji_edit_next:${catId}:${optIndex}:${safePageNum}`)
+      .setLabel('Next →')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(safePageNum >= totalPages - 1),
+    new ButtonBuilder()
+      .setCustomId(`set_back_edit:${catId}`)
+      .setLabel('← Cancel')
+      .setStyle(ButtonStyle.Secondary),
+  ];
+
+  return [
+    new ActionRowBuilder().addComponents(select),
+    new ActionRowBuilder().addComponents(navButtons),
   ];
 }
 
@@ -568,6 +627,63 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
         components: mainMenuRows(dynamicRoles.categories),
       });
     }
+    return;
+  }
+
+  // ── Change Emoji → pick which option to edit ──
+  if (id.startsWith('set_change_emoji:')) {
+    const catId = id.slice('set_change_emoji:'.length);
+    const cat = categories.find(c => c.id === catId);
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`set_select_change_emoji:${catId}`)
+      .setPlaceholder('Select an option to change its emoji...')
+      .addOptions(
+        cat.options.map((opt, i) =>
+          new StringSelectMenuOptionBuilder()
+            .setLabel(`${i + 1}. ${opt.label}`)
+            .setValue(String(i))
+            .setDescription(opt.emoji ? `Current: ${typeof opt.emoji === 'object' ? opt.emoji.name : opt.emoji}` : 'No emoji set')
+        )
+      );
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle(`🎨 Change Emoji — ${cat.name}`)
+        .setDescription('Select which option you want to change the emoji for:')
+        .setColor(0x5865F2)],
+      components: [
+        new ActionRowBuilder().addComponents(select),
+        new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId(`set_back_edit:${catId}`).setLabel('← Back').setStyle(ButtonStyle.Secondary)
+        ),
+      ],
+    });
+    return;
+  }
+
+  // ── Emoji page navigation (edit flow) ──
+  if (id.startsWith('set_emoji_edit_prev:') || id.startsWith('set_emoji_edit_next:')) {
+    const isPrev = id.startsWith('set_emoji_edit_prev:');
+    const rest = id.slice(isPrev ? 'set_emoji_edit_prev:'.length : 'set_emoji_edit_next:'.length);
+    const parts = rest.split(':');
+    const page = parseInt(parts.pop());
+    const optIndex = parseInt(parts.pop());
+    const catId = parts.join(':');
+    const cat = categories.find(c => c.id === catId);
+    const opt = cat?.options[optIndex];
+
+    const newPage = isPrev ? page - 1 : page + 1;
+
+    await interaction.guild.emojis.fetch().catch(() => {});
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle(`🎨 Change Emoji — ${opt?.label ?? ''}`)
+        .setDescription('Pick a server emoji from the list, or select **"No Emoji"** to remove it.')
+        .setColor(0x5865F2)],
+      components: buildEditEmojiPickerRows(catId, optIndex, interaction.guild, newPage),
+    });
     return;
   }
 
@@ -904,6 +1020,56 @@ async function handleSetSelect(interaction, dynamicRoles, saveStorage) {
             .setStyle(ButtonStyle.Secondary),
         ),
       ],
+    });
+    return;
+  }
+
+  // ── Select which option to change emoji for ──
+  if (id.startsWith('set_select_change_emoji:')) {
+    const catId = id.slice('set_select_change_emoji:'.length);
+    const cat = categories.find(c => c.id === catId);
+    const optIndex = parseInt(interaction.values[0]);
+    const opt = cat.options[optIndex];
+
+    await interaction.guild.emojis.fetch().catch(() => {});
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle(`🎨 Change Emoji — ${opt.label}`)
+        .setDescription('Pick a server emoji from the list, or select **"No Emoji"** to remove it.')
+        .setColor(0x5865F2)],
+      components: buildEditEmojiPickerRows(catId, optIndex, interaction.guild, 0),
+    });
+    return;
+  }
+
+  // ── Emoji picked for existing option (edit flow) ──
+  if (id.startsWith('set_pick_emoji_edit:')) {
+    const rest = id.slice('set_pick_emoji_edit:'.length);
+    const parts = rest.split(':');
+    const page = parseInt(parts.pop());
+    const optIndex = parseInt(parts.pop());
+    const catId = parts.join(':');
+    const cat = categories.find(c => c.id === catId);
+    const opt = cat?.options[optIndex];
+
+    if (!opt) {
+      await interaction.update({
+        embeds: [categoryEditorEmbed(cat, '❌ Option not found.')],
+        components: categoryEditorRows(catId, cat),
+      });
+      return;
+    }
+
+    const selected = interaction.values[0];
+    const emoji = selected === 'none' ? null : parseEmoji(selected);
+    opt.emoji = emoji;
+    saveStorage();
+
+    const note = `✅ Emoji for **${opt.label}** updated to ${displayEmoji(emoji) || '_none_'}.`.trim();
+    await interaction.update({
+      embeds: [categoryEditorEmbed(cat, note)],
+      components: categoryEditorRows(catId, cat),
     });
     return;
   }
