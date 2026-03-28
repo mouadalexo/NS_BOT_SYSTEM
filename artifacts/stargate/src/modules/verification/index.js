@@ -194,12 +194,42 @@ export function registerVerificationModule(client) {
             return;
         }
         if (interaction.isButton()) {
+            if (interaction.customId === "verify_close_ticket") {
+                await handleCloseTicket(interaction);
+                return;
+            }
             const validIds = ["verify_accept", "verify_deny", "verify_jail", "verify_ticket"];
             if (validIds.includes(interaction.customId)) {
                 await handleVerificationAction(interaction);
             }
         }
     });
+}
+async function handleCloseTicket(interaction) {
+    const guildId = interaction.guild.id;
+    const config = await getConfig(guildId);
+    const member = interaction.member;
+    const hasPermission = member.permissions.has(PermissionsBitField.Flags.Administrator) ||
+        (config?.verificatorsRoleId
+            ? member.roles.cache.has(config.verificatorsRoleId)
+            : false);
+    if (!hasPermission) {
+        await interaction.reply({
+            content: "❌ Only staff with the Verificators role can close tickets.",
+            ephemeral: true,
+        });
+        return;
+    }
+    await interaction.reply({
+        content: "🔒 Closing ticket…",
+        ephemeral: true,
+    });
+    try {
+        await interaction.channel.delete(`Ticket closed by ${interaction.user.tag}`);
+    }
+    catch {
+        // Channel may already be gone
+    }
 }
 async function handleVerificationSubmit(interaction) {
     await interaction.deferReply({ ephemeral: true });
@@ -459,12 +489,18 @@ async function handleVerificationAction(interaction) {
             ]
             : [];
         const questions = await getQuestions(guildId);
+        const closeRow = new ActionRowBuilder().addComponents(new ButtonBuilder()
+            .setCustomId("verify_close_ticket")
+            .setLabel("🔒 Close Ticket")
+            .setStyle(ButtonStyle.Danger));
         await ticketChannel.send({
+            content: config.verificatorsRoleId ? `<@&${config.verificatorsRoleId}> <@${memberId}>` : `<@${memberId}>`,
             embeds: [
                 new EmbedBuilder()
                     .setColor(BRAND)
                     .setTitle("🎫 Assistance Ticket")
-                    .setDescription(`Ticket for <@${memberId}> — opened by <@${interaction.user.id}>`)
+                    .setDescription(`Ticket for <@${memberId}> — opened by <@${interaction.user.id}>\n\n` +
+                    `-# Only staff with the Verificators role can close this ticket.`)
                     .addFields({
                     name: "Verification Answers",
                     value: answers.length
@@ -473,9 +509,10 @@ async function handleVerificationAction(interaction) {
                             .join("\n\n")
                         : "_Not available_",
                 })
-                    .setFooter({ text: "Night Stars • Ticket" })
+                    .setFooter({ text: "Stargate • Ticket" })
                     .setTimestamp(),
             ],
+            components: [closeRow],
         });
         await interaction.message.edit({
             embeds: [
