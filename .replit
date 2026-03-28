@@ -64,10 +64,6 @@ author = "agent"
 task = "workflow.run"
 args = "Night Stars Bot"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Moningu Bot"
-
 [[workflows.workflow]]
 name = "Night Stars Bot"
 author = "agent"
@@ -78,17 +74,6 @@ args = "pnpm --filter @workspace/discord-bot run start"
 
 [workflows.workflow.metadata]
 outputType = "console"
-
-[[workflows.workflow]]
-name = "Moningu Bot"
-author = "agent"
-
-[workflows.workflow.metadata]
-outputType = "console"
-
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd /home/runner/workspace/moningu-local/artifacts/discord-bot && node index.js"
 
 [agent]
 stack = "PNPM_WORKSPACE"
@@ -102,6 +87,8 @@ timeoutMs = 20000
 
 [userenv.shared]
 MAIN_GUILD_ID = "1080982657179058206"
+VPS_HOST = "93.189.95.218"
+VPS_USER = "root"
 
 [nix]
 channel = "stable-25_05"
