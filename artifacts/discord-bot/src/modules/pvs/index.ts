@@ -56,11 +56,11 @@ async function sendTemp(msg: Message, embed: EmbedBuilder, delay = 12000) {
 }
 
 function errorEmbed(text: string) {
-  return new EmbedBuilder().setColor(0xe74c3c).setDescription(`❌ ${text}`);
+  return new EmbedBuilder().setColor(0x5000ff).setDescription(`❌ ${text}`);
 }
 
 function successEmbed(text: string) {
-  return new EmbedBuilder().setColor(0x2ecc71).setDescription(text);
+  return new EmbedBuilder().setColor(0x5000ff).setDescription(text);
 }
 
 async function getOwnerVoice(member: GuildMember): Promise<VoiceChannel | null> {
@@ -192,7 +192,7 @@ async function createPrivateVoice(
     }
 
     const welcomeEmbed = new EmbedBuilder()
-      .setColor(0x9b59b6)
+      .setColor(0x5000ff)
       .setTitle("🎙️ Welcome to your Premium Voice!")
       .setDescription(
         `Hey <@${member.id}>! Your private room is ready.\n\n` +
@@ -281,7 +281,7 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
     }
 
     const welcomeEmbed = new EmbedBuilder()
-      .setColor(0x9b59b6)
+      .setColor(0x5000ff)
       .setTitle("🎙️ Welcome to your Premium Voice!")
       .setDescription(
         `Congratulations <@${target.id}>! 🎉\n\n` +
@@ -303,7 +303,7 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
     const staffNotice = await message.channel.send({
       embeds: [
         new EmbedBuilder()
-          .setColor(0x2ecc71)
+          .setColor(0x5000ff)
           .setDescription(`✅ **${newChannel.name}** created for <@${target.id}> — <#${newChannel.id}>`),
       ],
     });
@@ -352,7 +352,7 @@ async function handleManagerDeletePVS(message: Message, manager: GuildMember, ar
   const sent = await message.channel.send({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xe74c3c)
+        .setColor(0x5000ff)
         .setDescription(`🗑️ <@${targetId}>'s Premium Voice room has been removed by ${manager.displayName}.`)
     ],
   });
@@ -389,7 +389,7 @@ async function handleKey(message: Message, member: GuildMember, args: string) {
     );
     await vc.permissionOverwrites.delete(targetId).catch(() => {});
     await sendTemp(message, new EmbedBuilder()
-      .setColor(0xe67e22)
+      .setColor(0x5000ff)
       .setDescription(`🔑 <@${targetId}> **lost their key** to your voice room.`)
     );
   } else {
@@ -409,7 +409,7 @@ async function handleKey(message: Message, member: GuildMember, args: string) {
       AddReactions: true,
     });
     await sendTemp(message, new EmbedBuilder()
-      .setColor(0x2ecc71)
+      .setColor(0x5000ff)
       .setDescription(`🔑 <@${targetId}> **received the key** to your voice room!`)
     );
   }
@@ -442,7 +442,7 @@ async function handleSeeKeys(message: Message, member: GuildMember) {
 
   if (keys.length === 0) {
     await sendTemp(message, new EmbedBuilder()
-      .setColor(0x95a5a6)
+      .setColor(0x5000ff)
       .setDescription("🔒 No keys given yet — your room is fully private.")
     );
     return;
@@ -450,7 +450,7 @@ async function handleSeeKeys(message: Message, member: GuildMember) {
 
   const mentions = keys.map((k) => `<@${k.userId}>`).join(" • ");
   await sendTemp(message, new EmbedBuilder()
-    .setColor(0x3498db)
+    .setColor(0x5000ff)
     .setTitle("🔑 Current Keys")
     .setDescription(mentions)
   );
@@ -513,7 +513,7 @@ async function handlePull(message: Message, member: GuildMember, args: string) {
   await vc.send({
     embeds: [
       new EmbedBuilder()
-        .setColor(0x2ecc71)
+        .setColor(0x5000ff)
         .setDescription(`🚪 <@${member.id}> pulled <@${targetId}> in from the waiting room.`),
     ],
   }).catch(() => {});

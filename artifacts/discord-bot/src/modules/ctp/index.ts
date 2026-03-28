@@ -30,7 +30,7 @@ export function registerCTPModule(client: Client) {
       const notice = await message.channel.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xe74c3c)
+            .setColor(0x5000ff)
             .setDescription("You must be in a game voice channel to use this."),
         ],
       });
@@ -43,7 +43,7 @@ export function registerCTPModule(client: Client) {
       const notice = await message.channel.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xe74c3c)
+            .setColor(0x5000ff)
             .setDescription("This voice channel is not under a configured game category."),
         ],
       });
@@ -68,7 +68,7 @@ export function registerCTPModule(client: Client) {
       const notice = await message.channel.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xe74c3c)
+            .setColor(0x5000ff)
             .setDescription("This voice channel's category is not set up for Call to Play."),
         ],
       });
@@ -111,7 +111,7 @@ export function registerCTPModule(client: Client) {
         const notice = await message.channel.send({
           embeds: [
             new EmbedBuilder()
-              .setColor(0xe74c3c)
+              .setColor(0x5000ff)
               .setTitle("Cooldown Active")
               .setDescription(
                 `The **${config.gameName}** tag was used recently.\n` +
@@ -128,7 +128,7 @@ export function registerCTPModule(client: Client) {
     const pingMessage = config.pingMessage ?? "Looking for players!";
 
     const pingEmbed = new EmbedBuilder()
-      .setColor(0xff0000)
+      .setColor(0x5000ff)
       .setDescription(`**${member.displayName}** — ${pingMessage}`)
       .setFooter({ text: `Next tag available in ${formatSeconds(config.cooldownSeconds)}` });
 
@@ -145,7 +145,7 @@ export function registerCTPModule(client: Client) {
     const confirm = await (message.channel as TextChannel).send({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff0000)
+          .setColor(0x5000ff)
           .setDescription(`✅ ${confirmMsg}`),
       ],
     });

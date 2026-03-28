@@ -79,7 +79,7 @@ export async function openCtpManagePanel(interaction: ButtonInteraction) {
     const payload = {
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff0000)
+          .setColor(0x5000ff)
           .setTitle("Call to Play — Game Manager")
           .setDescription("No games configured yet. Add your first game below.")
           .setFooter({ text: "Night Stars • CTP" }),
@@ -116,7 +116,7 @@ export async function openCtpManagePanel(interaction: ButtonInteraction) {
 function buildManageEmbed(games: Awaited<ReturnType<typeof getGuildGames>>, selected?: typeof games[0]) {
   if (selected) {
     return new EmbedBuilder()
-      .setColor(0xff0000)
+      .setColor(0x5000ff)
       .setTitle(`${selected.gameName}`)
       .setDescription(
         [
@@ -130,7 +130,7 @@ function buildManageEmbed(games: Awaited<ReturnType<typeof getGuildGames>>, sele
   }
 
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("Call to Play — Game Manager")
     .setDescription(
       games.map((g) => `**${g.gameName}** — <@&${g.gameRoleId}> • Cooldown: ${formatSeconds(g.cooldownSeconds)}`).join("\n")
@@ -220,7 +220,7 @@ export async function handleCtpRemoveGame(interaction: ButtonInteraction) {
     await interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff0000)
+          .setColor(0x5000ff)
           .setTitle("Call to Play — Game Manager")
           .setDescription("Game removed. No games configured yet. Add your first game below.")
           .setFooter({ text: "Night Stars • CTP" }),
@@ -288,7 +288,7 @@ function buildCtpPanelEmbed(state: CtpPanelState) {
   ];
 
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("Call to Play")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • CTP" });
@@ -359,7 +359,7 @@ export async function handleCtpBackToManage(interaction: ButtonInteraction) {
     await interaction.update({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff0000)
+          .setColor(0x5000ff)
           .setTitle("Call to Play — Game Manager")
           .setDescription("No games configured yet. Add your first game below.")
           .setFooter({ text: "Night Stars • CTP" }),
@@ -491,7 +491,7 @@ export async function handleCtpPanelSave(interaction: ButtonInteraction) {
 
   if (!state.categoryId || !state.gameRoleId || !state.gameName) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("Game Name, Role and Category are required.")],
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Game Name, Role and Category are required.")],
       ephemeral: true,
     });
     return;

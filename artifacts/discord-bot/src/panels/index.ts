@@ -59,7 +59,7 @@ import { deployVerificationPanel } from "../modules/verification/index.js";
 function buildDeployChannelSelect() {
   return {
     embed: new EmbedBuilder()
-      .setColor(0xff0000)
+      .setColor(0x5000ff)
       .setTitle("📌 Post Verification Panel")
       .setDescription("Select the channel to post the verification button in.")
       .setFooter({ text: "Night Stars • NSV" }),
@@ -76,7 +76,7 @@ function buildDeployChannelSelect() {
 
 function buildPvsInfoEmbed() {
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("🎙️ PVS — Private Voice System Commands")
     .setDescription("Commands for private voice room owners:")
     .addFields(
@@ -94,7 +94,7 @@ function buildPvsInfoEmbed() {
 
 function buildCtpInfoEmbed() {
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("🎮 CTP — Call to Play Commands")
     .setDescription("Commands for calling players to your game:")
     .addFields(
@@ -234,7 +234,7 @@ export async function registerPanelCommands(client: Client) {
 async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("❌ You need **Administrator** permission to use this.")],
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("❌ You need **Administrator** permission to use this.")],
       ephemeral: true,
     });
     return;
@@ -330,7 +330,7 @@ async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInte
       await interaction.update({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xff0000)
+            .setColor(0x5000ff)
             .setTitle("✅ Verification Panel Posted")
             .setDescription(`Panel posted in <#${channelId}>. Members will see the Start Verification button there.`)
             .setFooter({ text: "Night Stars • NSV" }),

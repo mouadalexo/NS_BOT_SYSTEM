@@ -51,7 +51,7 @@ function buildVerifyPanelEmbed(state: VerifyPanelState) {
   ];
 
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("Night Stars Verification")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • NSV" });
@@ -215,7 +215,7 @@ export async function handleEditQuestionsSubmit(interaction: ModalSubmitInteract
   await interaction.reply({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xff0000)
+        .setColor(0x5000ff)
         .setTitle("Questions Updated")
         .setDescription(questions.map((q, i) => `**Q${i + 1}** — ${q}`).join("\n"))
         .setFooter({ text: "Night Stars • NSV" }),
@@ -292,7 +292,7 @@ export async function handleEmbedCustomizeSubmit(interaction: ModalSubmitInterac
   }
 
   const previewEmbed = new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle(state.embedTitle || "Night Stars — Verification")
     .setDescription(state.embedDescription ||
       "Welcome to **Night Stars**!\n\nClick the button below and answer the questions.\nA staff member will review your answers and verify you shortly."
@@ -354,7 +354,7 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
 
   if (!state.verificatorsRoleId || !state.logsChannelId) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("Verificators Role and Logs Channel are required.")],
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Verificators Role and Logs Channel are required.")],
       ephemeral: true,
     });
     return;
@@ -392,7 +392,7 @@ export async function handleVerifyPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xff0000)
+        .setColor(0x5000ff)
         .setTitle("NSV Saved")
         .setDescription(
           [

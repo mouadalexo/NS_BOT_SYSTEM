@@ -16,7 +16,9 @@ import {
 } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable, verificationSessionsTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, count } from "drizzle-orm";
+
+const BRAND = 0x5000ff;
 
 const DEFAULT_QUESTIONS = [
   "Wach nta mghribi ?",
@@ -47,7 +49,7 @@ export function buildVerificationPanelEmbed(title?: string | null, description?:
     "A staff member will review your answers and verify you shortly.";
 
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(BRAND)
     .setTitle(title || "Night Stars — Verification")
     .setDescription(resolvedDesc)
     .setFooter({ text: "Night Stars • Verification System" });
@@ -98,11 +100,12 @@ function buildVerificationLogEmbed(
   memberUsername: string,
   createdAt: number,
   answers: string[],
-  questions: string[]
+  questions: string[],
+  applicationNumber: number
 ) {
   return new EmbedBuilder()
-    .setColor(0xff0000)
-    .setTitle("New Verification Request")
+    .setColor(BRAND)
+    .setTitle(`New Verification Request — Application #${applicationNumber}`)
     .addFields(
       { name: "Member", value: `<@${memberId}> (${memberUsername})`, inline: true },
       { name: "ID", value: memberId, inline: true },
@@ -114,7 +117,7 @@ function buildVerificationLogEmbed(
         inline: false,
       }))
     )
-    .setFooter({ text: "Verificators: choose an action below" })
+    .setFooter({ text: `Application #${applicationNumber} • Verificators: choose an action below` })
     .setTimestamp();
 }
 
@@ -248,7 +251,7 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
   await interaction.editReply({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xff0000)
+        .setColor(BRAND)
         .setTitle("Answers Submitted")
         .setDescription(
           "Your answers have been sent to the staff for review.\nPlease wait — you will be verified shortly."
@@ -265,8 +268,22 @@ async function handleVerificationSubmit(interaction: ModalSubmitInteraction) {
   ) as TextChannel | undefined;
   if (!logsChannel) return;
 
+  // Get application number (total sessions for this guild)
+  const countResult = await db
+    .select({ total: count() })
+    .from(verificationSessionsTable)
+    .where(eq(verificationSessionsTable.guildId, guildId));
+  const applicationNumber = countResult[0]?.total ?? 1;
+
   const questions = await getQuestions(guildId);
-  const logEmbed = buildVerificationLogEmbed(user.id, user.username, user.createdTimestamp, answers, questions);
+  const logEmbed = buildVerificationLogEmbed(
+    user.id,
+    user.username,
+    user.createdTimestamp,
+    answers,
+    questions,
+    applicationNumber
+  );
 
   await logsChannel.send({
     content: config.verificatorsRoleId ? `<@&${config.verificatorsRoleId}>` : undefined,
@@ -317,7 +334,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
       ?.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xff0000)
+            .setColor(BRAND)
             .setTitle("Verification Accepted")
             .setDescription("Welcome to **Night Stars**! You now have full access to the server."),
         ],
@@ -326,7 +343,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
     await interaction.message.edit({
       embeds: [
         EmbedBuilder.from(embed)
-          .setColor(0x2ecc71)
+          .setColor(BRAND)
           .setFooter({ text: `Accepted by ${staffName}` }),
       ],
       components: [disabledRow],
@@ -336,7 +353,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
       ?.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xff0000)
+            .setColor(BRAND)
             .setTitle("Verification Denied")
             .setDescription("Your verification for **Night Stars** was denied. You may try again."),
         ],
@@ -345,7 +362,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
     await interaction.message.edit({
       embeds: [
         EmbedBuilder.from(embed)
-          .setColor(0xe74c3c)
+          .setColor(BRAND)
           .setFooter({ text: `Denied by ${staffName}` }),
       ],
       components: [disabledRow],
@@ -358,7 +375,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
       ?.send({
         embeds: [
           new EmbedBuilder()
-            .setColor(0xff0000)
+            .setColor(BRAND)
             .setTitle("Verification — Jailed")
             .setDescription("Your verification request was flagged. A staff member may contact you."),
         ],
@@ -367,7 +384,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
     await interaction.message.edit({
       embeds: [
         EmbedBuilder.from(embed)
-          .setColor(0x95a5a6)
+          .setColor(BRAND)
           .setFooter({ text: `Jailed by ${staffName}` }),
       ],
       components: [disabledRow],
@@ -439,7 +456,7 @@ async function handleVerificationAction(interaction: ButtonInteraction) {
     await ticketChannel.send({
       embeds: [
         new EmbedBuilder()
-          .setColor(0xff0000)
+          .setColor(BRAND)
           .setTitle("Assistance Ticket")
           .setDescription(`Ticket for <@${memberId}> — opened by <@${interaction.user.id}>`)
           .addFields({

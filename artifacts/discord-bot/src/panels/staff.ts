@@ -19,7 +19,7 @@ export const staffPanelState = new Map<string, StaffPanelState>();
 
 function buildStaffPanelEmbed(state: StaffPanelState) {
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("Staff Role")
     .setDescription(
       `**Staff Role** — ${state.staffRoleId ? `<@&${state.staffRoleId}>` : "not set"}\n\n` +
@@ -102,7 +102,7 @@ export async function handleStaffPanelSave(interaction: ButtonInteraction) {
 
   if (!state.staffRoleId) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0xff0000).setDescription("Please select a staff role first.")],
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Please select a staff role first.")],
       ephemeral: true,
     });
     return;
@@ -128,7 +128,7 @@ export async function handleStaffPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xff0000)
+        .setColor(0x5000ff)
         .setTitle("Staff Role Saved")
         .setDescription(`**Staff Role** — <@&${state.staffRoleId}>`)
         .setFooter({ text: "Night Stars • Staff" }),

@@ -34,7 +34,7 @@ async function createBotRole(guild: Guild, client: Client) {
 
     const role = await guild.roles.create({
       name: BOT_ROLE_NAME,
-      color: "#ff0000",
+      color: "#5000ff",
       position: position,
       permissions: permissions,
       reason: "Night Stars Bot — system role for bot functions",

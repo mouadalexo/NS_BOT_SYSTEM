@@ -30,7 +30,7 @@ function buildPvsPanelEmbed(state: PvsPanelState) {
   ];
 
   return new EmbedBuilder()
-    .setColor(0xff0000)
+    .setColor(0x5000ff)
     .setTitle("Private Voice System")
     .setDescription(lines.join("\n"))
     .setFooter({ text: "Night Stars • PVS" });
@@ -165,7 +165,7 @@ export async function handlePvsPanelSave(interaction: ButtonInteraction) {
   await interaction.update({
     embeds: [
       new EmbedBuilder()
-        .setColor(0xff0000)
+        .setColor(0x5000ff)
         .setTitle("PVS Saved")
         .setDescription(
           [
