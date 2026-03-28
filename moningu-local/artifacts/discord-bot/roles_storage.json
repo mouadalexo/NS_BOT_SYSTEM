@@ -79,6 +79,46 @@
           "label": "Honor of Kings",
           "emoji": "👑",
           "roleId": "1486591035021983945"
+        },
+        {
+          "label": "Genshin Impact",
+          "emoji": "🌸",
+          "roleId": "1487375765979926618"
+        },
+        {
+          "label": "Stumble Guys",
+          "emoji": "🏃",
+          "roleId": "1487375767087349810"
+        },
+        {
+          "label": "8 Ball Pool",
+          "emoji": "🎱",
+          "roleId": "1487375767892398143"
+        },
+        {
+          "label": "Dragon City",
+          "emoji": "🐉",
+          "roleId": "1487375768311824395"
+        },
+        {
+          "label": "Rise of Kingdoms",
+          "emoji": "🏛️",
+          "roleId": "1487375769226444850"
+        },
+        {
+          "label": "Squad Busters",
+          "emoji": "💥",
+          "roleId": "1487375770027556996"
+        },
+        {
+          "label": "Hay Day",
+          "emoji": "🌾",
+          "roleId": "1487375770585141380"
+        },
+        {
+          "label": "Royal Match",
+          "emoji": "🃏",
+          "roleId": "1487375771109560476"
         }
       ],
       "roleLimit": 5
@@ -162,6 +202,46 @@
           "label": "Roblox",
           "emoji": "🟥",
           "roleId": "1486591043963977879"
+        },
+        {
+          "label": "Rocket League",
+          "emoji": "🚀",
+          "roleId": "1487375771780775968"
+        },
+        {
+          "label": "Warzone",
+          "emoji": "🪖",
+          "roleId": "1487375772732756048"
+        },
+        {
+          "label": "Rainbow Six Siege",
+          "emoji": "🛡️",
+          "roleId": "1487375773420617849"
+        },
+        {
+          "label": "Rust",
+          "emoji": "🔧",
+          "roleId": "1487375774494228634"
+        },
+        {
+          "label": "Lost Ark",
+          "emoji": "🏹",
+          "roleId": "1487375775257858079"
+        },
+        {
+          "label": "Dead by Daylight",
+          "emoji": "🔦",
+          "roleId": "1487375776343920772"
+        },
+        {
+          "label": "Escape from Tarkov",
+          "emoji": "🎒",
+          "roleId": "1487375777157615719"
+        },
+        {
+          "label": "Diablo IV",
+          "emoji": "👹",
+          "roleId": "1487375781830332526"
         }
       ]
     },

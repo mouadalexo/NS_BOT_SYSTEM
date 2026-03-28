@@ -67,8 +67,15 @@ async function buildPanel(dynamicRoles, guild) {
   // Select menus (one per category with options)
   const menuRows = [];
   for (const cat of categories) {
-    const options = (cat.options || []).filter(o => o.roleId).slice(0, 24);
-    if (options.length === 0) continue;
+    const rawOptions = (cat.options || []).filter(o => o.roleId).slice(0, 24);
+    if (rawOptions.length === 0) continue;
+
+    // Sort by member count descending so most popular roles appear first
+    const options = [...rawOptions].sort((a, b) => {
+      const roleA = guild.roles.cache.get(a.roleId);
+      const roleB = guild.roles.cache.get(b.roleId);
+      return (roleB?.members?.size ?? 0) - (roleA?.members?.size ?? 0);
+    });
 
     const menuOptions = options.map(opt => {
       const option = new StringSelectMenuOptionBuilder()

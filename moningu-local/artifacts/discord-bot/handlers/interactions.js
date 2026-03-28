@@ -127,10 +127,22 @@ async function handlePanelInteraction(interaction, dynamicRoles) {
 
   } catch (err) {
     console.error('Error handling panel interaction:', err);
-    await interaction.followUp({
-      content: '❌ Something went wrong. Make sure the bot has the **Manage Roles** permission.',
-      ephemeral: true,
-    });
+    if (err?.code === 10011) {
+      await interaction.followUp({
+        content: '❌ That role no longer exists on this server. Ask an admin to reconfigure the panel.',
+        ephemeral: true,
+      });
+    } else if (err?.code === 50013) {
+      await interaction.followUp({
+        content: '❌ The bot is missing **Manage Roles** permission, or the role is above the bot in the role list.',
+        ephemeral: true,
+      });
+    } else {
+      await interaction.followUp({
+        content: '❌ Something went wrong. Please try again.',
+        ephemeral: true,
+      });
+    }
   }
 }
 
