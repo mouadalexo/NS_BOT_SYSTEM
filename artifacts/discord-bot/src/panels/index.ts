@@ -75,6 +75,107 @@ function buildDeployChannelSelect() {
   };
 }
 
+function buildAllCommandsEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("📋 Night Stars Bot — All Commands")
+    .addFields(
+      {
+        name: "📣 Announcements (staff with announce role or admin)",
+        value: [
+          "`!announce <text>` — Post a gold announcement embed with `@everyone`",
+          "`!testannounce <text>` — Preview announcement without pinging anyone",
+          "`!event` — Open the event form and post a blurple event embed with `@everyone`",
+          "`!testevent` — Preview the full event flow without pinging anyone",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "⚙️ Announcement Setup (admin only)",
+        value: [
+          "`!setannouncerole @Role` — Set which role can use announce/event commands",
+          "`!addannouncechannel #ch` — Add a channel where announce commands work (up to 4)",
+          "`!removeannouncechannel #ch` — Remove a channel from the list",
+          "`!announcechannels` — Show currently allowed announcement channels",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🎙️ PVS — Private Voice System (room owners)",
+        value: [
+          "`=key @user` — Give/remove access to your room",
+          "`=pull @user` — Pull someone from the waiting room",
+          "`=see keys` — List members with access",
+          "`=clear keys` — Remove all access",
+          "`=name <name>` — Rename your room",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🎙️ PVS — Staff (PVS Manager role)",
+        value: [
+          "`+pv @member` — Create a Premium Voice room",
+          "`+pv delete @member` — Remove a Premium Voice room",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🎮 CTP — Call to Play",
+        value: [
+          "`-tag` — Ping the game role for your current voice channel (auto-detected by category)",
+          "Each game has its own cooldown — the bot will tell you if one is active",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🔍 Help",
+        value: [
+          "`/help all` — This menu",
+          "`/help pvs` — PVS commands in detail",
+          "`/help ctp` — CTP commands in detail",
+          "`/help announcements` — Announcement commands in detail",
+        ].join("\n"),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Night Stars • NS Bot" });
+}
+
+function buildAnnouncementsHelpEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("📣 Announcements & Events — Commands")
+    .addFields(
+      {
+        name: "Live Commands",
+        value: [
+          "`!announce <text>` — Posts a gold embed with `@everyone`. You can attach an image too.",
+          "`!event` — Opens an event setup form. Fill in name, date, description, and optional image. Posts with `@everyone`.",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "🧪 Test Commands (same flow, no @everyone)",
+        value: [
+          "`!testannounce <text>` — Sends the announcement embed as a preview (no @everyone, orange color).",
+          "`!testevent` — Full event form flow but posts without @everyone and shows a [TEST] label.",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "⚙️ Channel & Role Setup (admin only)",
+        value: [
+          "`!setannouncerole @Role` — Grant a role access to announce/event commands.",
+          "`!addannouncechannel #ch` — Restrict announce/event to specific channels (up to 4). If none set, any channel works.",
+          "`!removeannouncechannel #ch` — Remove a channel from the allowed list.",
+          "`!announcechannels` — View current allowed channels.",
+        ].join("\n"),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Night Stars • Announcements" });
+}
+
 function buildPvsInfoEmbed() {
   return new EmbedBuilder()
     .setColor(0x5000ff)
@@ -142,10 +243,16 @@ export async function registerPanelCommands(client: Client) {
     .setName("help")
     .setDescription("Show how to use Night Stars bot systems")
     .addSubcommand((sub) =>
+      sub.setName("all").setDescription("Show every NS Bot command at a glance")
+    )
+    .addSubcommand((sub) =>
       sub.setName("pvs").setDescription("Show all PVS (Private Voice System) commands")
     )
     .addSubcommand((sub) =>
       sub.setName("ctp").setDescription("Show all CTP (Call to Play) commands")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("announcements").setDescription("Show all announcement & event commands")
     )
     .toJSON();
 
@@ -180,10 +287,14 @@ export async function registerPanelCommands(client: Client) {
         await handleSetupCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "help") {
         const sub = (interaction as ChatInputCommandInteraction).options.getSubcommand();
-        if (sub === "pvs") {
+        if (sub === "all") {
+          await interaction.reply({ embeds: [buildAllCommandsEmbed()], ephemeral: true });
+        } else if (sub === "pvs") {
           await interaction.reply({ embeds: [buildPvsInfoEmbed()], ephemeral: true });
         } else if (sub === "ctp") {
           await interaction.reply({ embeds: [buildCtpInfoEmbed()], ephemeral: true });
+        } else if (sub === "announcements") {
+          await interaction.reply({ embeds: [buildAnnouncementsHelpEmbed()], ephemeral: true });
         }
       }
       return;
