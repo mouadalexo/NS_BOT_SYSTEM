@@ -11,9 +11,9 @@ import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSlashCommands } from "./commands.js";
 import { registerPanelCommands } from "./panels/index.js";
 
-const token = process.env.DISCORD_TOKEN;
+const token = process.env.MONINGU_TOKEN || process.env.DISCORD_TOKEN;
 if (!token) {
-  console.error("DISCORD_TOKEN environment variable is not set.");
+  console.error("MONINGU_TOKEN environment variable is not set.");
   process.exit(1);
 }
 
