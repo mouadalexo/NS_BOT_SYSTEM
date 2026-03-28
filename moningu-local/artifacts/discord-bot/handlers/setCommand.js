@@ -244,10 +244,6 @@ function categoryEditorRows(catId, cat) {
         .setLabel('✏️ Rename')
         .setStyle(ButtonStyle.Primary),
       new ButtonBuilder()
-        .setCustomId(`set_cat_icon:${catId}`)
-        .setLabel('🖼️ Category Icon')
-        .setStyle(ButtonStyle.Primary),
-      new ButtonBuilder()
         .setCustomId(`set_set_limit:${catId}`)
         .setLabel('🔢 Limit')
         .setStyle(ButtonStyle.Secondary),

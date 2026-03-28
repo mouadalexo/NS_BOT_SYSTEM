@@ -28,7 +28,8 @@ async function getCategoryIcon(guild, cat) {
     // unicode emoji or string
     return cat.icon;
   }
-  return CATEGORY_ICONS[cat.id] || '🎭';
+  // No default emoji — let users add emoji in category name if they want
+  return '';
 }
 
 function resolveEmoji(emoji) {
@@ -124,9 +125,10 @@ async function buildPanel(dynamicRoles, guild) {
     );
 
     const icon = await getCategoryIcon(guild, cat);
+    const placeholderText = icon ? `${icon}  ${cat.placeholder || cat.name}` : (cat.placeholder || cat.name);
     const menu = new StringSelectMenuBuilder()
       .setCustomId(`cat:${cat.id}`)
-      .setPlaceholder(`${icon}  ${cat.placeholder || cat.name}`)
+      .setPlaceholder(placeholderText)
       .setMinValues(1)
       .setMaxValues(1)
       .addOptions(menuOptions);
