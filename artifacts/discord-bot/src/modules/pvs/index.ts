@@ -63,19 +63,20 @@ function successEmbed(text: string) {
   return new EmbedBuilder().setColor(0x5000ff).setDescription(text);
 }
 
+// Finds the owner's PVS voice channel — works even if the owner is NOT currently in the voice
 async function getOwnerVoice(member: GuildMember): Promise<VoiceChannel | null> {
-  if (!member.voice.channel) return null;
-  const vc = member.voice.channel;
-  if (vc.type !== ChannelType.GuildVoice) return null;
-
   const voice = await db
     .select()
     .from(pvsVoicesTable)
-    .where(and(eq(pvsVoicesTable.channelId, vc.id), eq(pvsVoicesTable.ownerId, member.id)))
+    .where(and(eq(pvsVoicesTable.guildId, member.guild.id), eq(pvsVoicesTable.ownerId, member.id)))
     .limit(1);
 
   if (voice.length === 0) return null;
-  return vc as VoiceChannel;
+
+  const channel = member.guild.channels.cache.get(voice[0].channelId);
+  if (!channel || channel.type !== ChannelType.GuildVoice) return null;
+
+  return channel as VoiceChannel;
 }
 
 async function getConfig(guildId: string) {
@@ -140,6 +141,12 @@ export function registerPVSModule(client: Client) {
         await handleRename(message, member, content.slice(5).trim());
       } else if (content.toLowerCase().startsWith("pull ")) {
         await handlePull(message, member, content.slice(5).trim());
+      } else if (content.toLowerCase() === "tlock") {
+        await handleTextLock(message, member, true);
+      } else if (content.toLowerCase() === "tunlock") {
+        await handleTextLock(message, member, false);
+      } else if (content.toLowerCase().startsWith("kick ")) {
+        await handleKick(message, member, content.slice(5).trim());
       }
     } catch (err) {
       console.error("[PVS] Unhandled error in messageCreate:", err);
@@ -201,6 +208,9 @@ async function createPrivateVoice(
       .addFields(
         { name: "`=key @user`", value: "Give or remove access for a member.", inline: false },
         { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
+        { name: "`=kick @user`", value: "Kick a member from your room and remove their key.", inline: false },
+        { name: "`=tlock`", value: "Lock the text chat — only you can send messages.", inline: false },
+        { name: "`=tunlock`", value: "Unlock the text chat — all members with access can chat again.", inline: false },
         { name: "`=see keys`", value: "See who currently has access.", inline: false },
         { name: "`=clear keys`", value: "Remove all keys — room goes fully private.", inline: false },
         { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
@@ -291,6 +301,9 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
       .addFields(
         { name: "`=key @user`", value: "Give or remove access for a member.", inline: false },
         { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
+        { name: "`=kick @user`", value: "Kick a member from your room and remove their key.", inline: false },
+        { name: "`=tlock`", value: "Lock the text chat — only you can send messages.", inline: false },
+        { name: "`=tunlock`", value: "Unlock the text chat — all members with access can chat again.", inline: false },
         { name: "`=see keys`", value: "See who currently has access.", inline: false },
         { name: "`=clear keys`", value: "Remove all keys — room goes fully private.", inline: false },
         { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
@@ -362,7 +375,7 @@ async function handleManagerDeletePVS(message: Message, manager: GuildMember, ar
 async function handleKey(message: Message, member: GuildMember, args: string) {
   const vc = await getOwnerVoice(member);
   if (!vc) {
-    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
     return;
   }
 
@@ -418,7 +431,7 @@ async function handleKey(message: Message, member: GuildMember, args: string) {
 async function handleClearKeys(message: Message, member: GuildMember) {
   const vc = await getOwnerVoice(member);
   if (!vc) {
-    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
     return;
   }
 
@@ -434,7 +447,7 @@ async function handleClearKeys(message: Message, member: GuildMember) {
 async function handleSeeKeys(message: Message, member: GuildMember) {
   const vc = await getOwnerVoice(member);
   if (!vc) {
-    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
     return;
   }
 
@@ -464,7 +477,7 @@ async function handleRename(message: Message, member: GuildMember, newName: stri
 
   const vc = await getOwnerVoice(member);
   if (!vc) {
-    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
     return;
   }
 
@@ -475,7 +488,7 @@ async function handleRename(message: Message, member: GuildMember, newName: stri
 async function handlePull(message: Message, member: GuildMember, args: string) {
   const vc = await getOwnerVoice(member);
   if (!vc) {
-    await sendTemp(message, errorEmbed("You must be the owner of a private voice channel to use this."));
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
     return;
   }
 
@@ -517,4 +530,94 @@ async function handlePull(message: Message, member: GuildMember, args: string) {
         .setDescription(`🚪 <@${member.id}> pulled <@${targetId}> in from the waiting room.`),
     ],
   }).catch(() => {});
+}
+
+async function handleTextLock(message: Message, member: GuildMember, lock: boolean) {
+  const vc = await getOwnerVoice(member);
+  if (!vc) {
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
+    return;
+  }
+
+  if (lock) {
+    // Deny SendMessages for @everyone, keep owner's overwrite untouched
+    await vc.permissionOverwrites.edit(vc.guild.id, {
+      SendMessages: false,
+    }).catch(() => {});
+    await sendTemp(
+      message,
+      new EmbedBuilder()
+        .setColor(0x5000ff)
+        .setTitle("🔒 Text Chat Locked")
+        .setDescription(
+          "The text chat in your voice room is now **locked**.\n" +
+          "Only you can send messages. Use `=tunlock` to open it again."
+        )
+    );
+  } else {
+    // Restore SendMessages for @everyone (null = inherit / no override)
+    await vc.permissionOverwrites.edit(vc.guild.id, {
+      SendMessages: null,
+    }).catch(() => {});
+    await sendTemp(
+      message,
+      new EmbedBuilder()
+        .setColor(0x5000ff)
+        .setTitle("🔓 Text Chat Unlocked")
+        .setDescription(
+          "The text chat in your voice room is now **unlocked**.\n" +
+          "All members with access can send messages again."
+        )
+    );
+  }
+}
+
+async function handleKick(message: Message, member: GuildMember, args: string) {
+  const vc = await getOwnerVoice(member);
+  if (!vc) {
+    await sendTemp(message, errorEmbed("You don't have a Premium Voice room."));
+    return;
+  }
+
+  const targetId = args.replace(/[<@!>]/g, "").trim();
+  if (!targetId) {
+    await sendTemp(message, errorEmbed("Please mention a member to kick. Usage: `=kick @member`"));
+    return;
+  }
+
+  if (targetId === member.id) {
+    await sendTemp(message, errorEmbed("You can't kick yourself."));
+    return;
+  }
+
+  const target = await message.guild!.members.fetch(targetId).catch(() => null);
+  if (!target) {
+    await sendTemp(message, errorEmbed("Member not found."));
+    return;
+  }
+
+  // Disconnect from voice if they're in the room
+  if (target.voice.channelId === vc.id) {
+    await target.voice.disconnect().catch(() => {});
+  }
+
+  // Remove their key from the DB
+  await db.delete(pvsKeysTable).where(
+    and(eq(pvsKeysTable.channelId, vc.id), eq(pvsKeysTable.userId, targetId))
+  );
+
+  // Remove their permission overwrite from the channel
+  await vc.permissionOverwrites.delete(targetId).catch(() => {});
+
+  await sendTemp(
+    message,
+    new EmbedBuilder()
+      .setColor(0x5000ff)
+      .setTitle("👢 Member Kicked")
+      .setDescription(
+        `<@${targetId}> has been **kicked** from your voice room.\n\n` +
+        "• They have been **disconnected** from the voice channel.\n" +
+        "• Their **key has been removed** — they can no longer rejoin unless you give them a new key with `=key @user`."
+      )
+  );
 }
