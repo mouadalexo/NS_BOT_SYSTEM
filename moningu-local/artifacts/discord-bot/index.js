@@ -123,6 +123,14 @@ async function handleListCommand(interaction) {
 client.once('clientReady', async () => {
   console.log(`${client.user.tag} is online.`);
 
+  // Keep the display name clean
+  try {
+    if (client.user.username !== 'Moningu') {
+      await client.user.setUsername('Moningu');
+    }
+  } catch {}
+
+
   const guildId = process.env.GUILD_ID;
   if (guildId) {
     try {
