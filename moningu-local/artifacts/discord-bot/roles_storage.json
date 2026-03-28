@@ -7,7 +7,11 @@
       "options": [
         {
           "label": "Among Us",
-          "emoji": "🕵️",
+          "emoji": {
+            "animated": false,
+            "name": "amongay",
+            "id": "1209031227902918736"
+          },
           "roleId": "1080982657179058207"
         },
         {
@@ -136,7 +140,7 @@
         {
           "label": "League of Legends",
           "emoji": "⚔️",
-          "roleId": "1449246606217052361"
+          "roleId": "1487388230901825628"
         },
         {
           "label": "Minecraft",
@@ -146,7 +150,7 @@
         {
           "label": "Counter-Strike 2",
           "emoji": "💣",
-          "roleId": "1214980181954011187"
+          "roleId": "1487388231707394058"
         },
         {
           "label": "Fortnite",
@@ -196,7 +200,7 @@
         {
           "label": "EA FC 25",
           "emoji": "⚽",
-          "roleId": "1332828530568069121"
+          "roleId": "1487388232525021264"
         },
         {
           "label": "Roblox",
@@ -206,7 +210,7 @@
         {
           "label": "Rocket League",
           "emoji": "🚀",
-          "roleId": "1332828727066886268"
+          "roleId": "1487375771780775968"
         },
         {
           "label": "Warzone",
