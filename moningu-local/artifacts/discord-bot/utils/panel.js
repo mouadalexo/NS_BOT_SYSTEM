@@ -87,12 +87,11 @@ async function buildPanel(dynamicRoles, guild) {
         try { option.setEmoji(emoji); } catch (_) {}
       }
 
-      // Show member count in description
+      // Show member count as plain number only
       try {
         const role = guild.roles.cache.get(opt.roleId);
-        if (role) {
-          const count = role.members.size;
-          option.setDescription(`👥 ${count} member${count !== 1 ? 's' : ''}`);
+        if (role && role.members.size > 0) {
+          option.setDescription(`${role.members.size}`);
         }
       } catch (_) {}
 
