@@ -1102,14 +1102,23 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
       return;
     }
 
-    await interaction.guild.emojis.fetch().catch(() => {});
-    await interaction.update({
-      embeds: [new EmbedBuilder()
-        .setTitle('🎨 Pick an Emoji')
-        .setDescription(`Choose a **server emoji** for **${pending.label}**.\nSelect **"No Emoji"** to skip.`)
-        .setColor(0x5865F2)],
-      components: buildEmojiPickerComponents(catId, interaction.guild),
-    });
+    // Show search modal instead of pagination
+    const modal = new ModalBuilder()
+      .setCustomId(`modal_search_emoji:${catId}`)
+      .setTitle('🔍 Search Emoji');
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('emoji_search')
+          .setLabel('Emoji Name (e.g. "game", "heart")')
+          .setPlaceholder('Type emoji name...')
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(50)
+      ),
+    );
+
+    await interaction.showModal(modal);
     return;
   }
 
@@ -1638,6 +1647,57 @@ async function handleSetModal(interaction, dynamicRoles, saveStorage) {
     await interaction.update({
       embeds: [categoryEditorEmbed(cat, note)],
       components: categoryEditorRows(catId, cat),
+    });
+    return;
+  }
+
+  // ── Search emojis by name ──
+  if (id.startsWith('modal_search_emoji:')) {
+    const catId = id.slice('modal_search_emoji:'.length);
+    const cat = categories.find(c => c.id === catId);
+    const searchTerm = interaction.fields.getTextInputValue('emoji_search').trim().toLowerCase();
+    
+    if (!searchTerm) {
+      await interaction.reply({ content: '❌ Please enter a search term.', ephemeral: true });
+      return;
+    }
+
+    await interaction.guild.emojis.fetch().catch(() => {});
+    const allEmojis = [...interaction.guild.emojis.cache.values()];
+    const matching = allEmojis.filter(e => e.name.toLowerCase().includes(searchTerm)).slice(0, 25);
+
+    if (matching.length === 0) {
+      await interaction.reply({ content: `❌ No emojis found matching **"${searchTerm}"**.`, ephemeral: true });
+      return;
+    }
+
+    const options = [
+      new StringSelectMenuOptionBuilder()
+        .setLabel('No Emoji')
+        .setValue('none')
+        .setDescription(`Skip emoji for this option`),
+    ];
+
+    for (const e of matching) {
+      options.push(
+        new StringSelectMenuOptionBuilder()
+          .setLabel(e.name.slice(0, 25))
+          .setValue(e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`)
+          .setEmoji({ id: e.id, name: e.name, animated: e.animated })
+      );
+    }
+
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`set_pick_emoji:${catId}`)
+      .setPlaceholder(`Found ${matching.length} emoji(s)...`)
+      .addOptions(options);
+
+    await interaction.update({
+      embeds: [new EmbedBuilder()
+        .setTitle('🔍 Emoji Search Results')
+        .setDescription(`Found **${matching.length}** emoji(s) matching **"${searchTerm}"**`)
+        .setColor(0x57F287)],
+      components: [new ActionRowBuilder().addComponents(select)],
     });
     return;
   }
