@@ -1,12 +1,17 @@
 #!/bin/bash
 # Deploy Moningu and Stargate to VPS at 93.189.95.218
-# Run from workspace root: bash deploy-vps.sh
-# Requires: sshpass, MONINGU_TOKEN and STARGATE_TOKEN and DATABASE_URL in env
+# Run from workspace root: SSHPASS=<password> bash deploy-vps.sh
+# Requires: sshpass, SSHPASS env var, MONINGU_TOKEN, STARGATE_TOKEN, DATABASE_URL in env
 set -e
+
+if [ -z "$SSHPASS" ]; then
+  echo "Error: SSHPASS environment variable must be set"
+  exit 1
+fi
 
 VPS_HOST="93.189.95.218"
 VPS_USER="root"
-export SSHPASS="yurialexonightstars"
+export SSHPASS="$SSHPASS"
 
 SSH="sshpass -e ssh -o StrictHostKeyChecking=no ${VPS_USER}@${VPS_HOST}"
 SCP="sshpass -e scp -o StrictHostKeyChecking=no"
