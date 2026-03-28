@@ -262,7 +262,7 @@ function categoryEditorRows(catId, cat) {
 // ─── Server emoji picker builder ─────────────────────────────────────────────
 
 function buildEmojiPickerComponents(catId, guild) {
-  const guildEmojis = [...guild.emojis.cache.values()].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 24);
+  const guildEmojis = [...guild.emojis.cache.values()].sort((a, b) => (b.id > a.id ? 1 : -1)).slice(0, 50);
 
   const options = [
     new StringSelectMenuOptionBuilder()
@@ -292,7 +292,7 @@ function buildEmojiPickerComponents(catId, guild) {
 
 // ─── Paged emoji picker for editing existing options ──────────────────────────
 
-const PER_PAGE = 24; // 1 slot reserved for "No Emoji"
+const PER_PAGE = 12; // Reduced from 24 for faster loading
 
 function buildEditEmojiPickerRows(catId, optIndex, guild, page) {
   const allEmojis = [...guild.emojis.cache.values()].sort((a, b) => (b.id > a.id ? 1 : -1));
@@ -1033,25 +1033,13 @@ async function handleSetButton(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
-  // ── Category icon → show server emoji picker ──
-  if (id.startsWith('set_cat_icon:')) {
-    const catId = id.slice('set_cat_icon:'.length);
-    const cat = categories.find(c => c.id === catId);
-
-    await interaction.guild.emojis.fetch().catch(() => {});
-
-    await interaction.update({
-      embeds: [new EmbedBuilder()
-        .setTitle(`🖼️ Category Icon — ${cat.name}`)
-        .setDescription('Pick a server emoji to use as the icon for this category.\nSelect **"No Icon"** to reset to the default.')
-        .setColor(0x5865F2)],
-      components: buildCatIconPickerRows(catId, interaction.guild, 0),
-    });
+  // ── Category icon → DISABLED (use category name for emoji instead) ──
+  if (id.startsWith('set_cat_icon:') || id.startsWith('set_cat_icon_prev:') || id.startsWith('set_cat_icon_next:')) {
     return;
   }
 
   // ── Category icon page navigation ──
-  if (id.startsWith('set_cat_icon_prev:') || id.startsWith('set_cat_icon_next:')) {
+  if (false) {  // DISABLED
     const isPrev = id.startsWith('set_cat_icon_prev:');
     const rest = id.slice(isPrev ? 'set_cat_icon_prev:'.length : 'set_cat_icon_next:'.length);
     const lastColon = rest.lastIndexOf(':');
@@ -1424,8 +1412,12 @@ async function handleSetSelect(interaction, dynamicRoles, saveStorage) {
     return;
   }
 
-  // ── Category icon picked (confirm step) ──
-  if (id.startsWith('set_pick_cat_icon:')) {
+  // ── Category icon picked (DISABLED) ──
+  if (id.startsWith('set_pick_cat_icon:') || id.startsWith('set_confirm_cat_icon:') || id.startsWith('set_retry_cat_icon:')) {
+    return;
+  }
+
+  if (false) {  // DISABLED
     const rest = id.slice('set_pick_cat_icon:'.length);
     const lastColon = rest.lastIndexOf(':');
     const catId = rest.slice(0, lastColon);
