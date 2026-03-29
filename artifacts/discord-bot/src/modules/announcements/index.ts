@@ -34,28 +34,25 @@ async function resolveEmojiCodes(text: string, guild: Guild): Promise<string> {
   const matches = [...text.matchAll(emojiRegex)];
   if (matches.length === 0) return text;
 
-  // Ensure emoji cache is fresh
   try { await guild.emojis.fetch(); } catch { /* ignore */ }
-
-  console.log(`[Ann] Resolving emojis in text: ${text}`);
-  console.log(`[Ann] Guild emoji cache size: ${guild.emojis.cache.size}`);
 
   let result = text;
   for (const match of matches) {
     const [fullMatch, , name, id] = match;
-    // By ID in current guild
     let emoji = guild.emojis.cache.get(id);
     if (!emoji) {
-      // By name (case-insensitive) in current guild
       emoji = guild.emojis.cache.find((e) => e.name?.toLowerCase() === name.toLowerCase()) ?? undefined;
     }
-    console.log(`[Ann] Emoji ${fullMatch} → ${emoji ? emoji.toString() : "not found in guild cache"}`);
     if (emoji) {
       result = result.replace(fullMatch, emoji.toString());
     }
   }
-  console.log(`[Ann] Final resolved text: ${result}`);
   return result;
+}
+
+// ── Validate a URL before passing to Discord embed ────────────────────────────
+function isValidUrl(url: string): boolean {
+  try { new URL(url); return true; } catch { return false; }
 }
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -123,7 +120,7 @@ function buildAnnouncementEmbed(
     .setDescription(text)
     .setTimestamp();
 
-  if (imageUrl) embed.setImage(imageUrl);
+  if (imageUrl && isValidUrl(imageUrl)) embed.setImage(imageUrl);
   if (isTest) {
     embed.setFooter({ text: "🧪 Test mode — not sent to @everyone" });
   }
@@ -152,7 +149,7 @@ function buildEventEmbed(
     )
     .setTimestamp();
 
-  if (imageUrl) embed.setImage(imageUrl);
+  if (imageUrl && isValidUrl(imageUrl)) embed.setImage(imageUrl);
   if (isTest) {
     embed.setFooter({ text: "🧪 Test mode — not sent to @everyone" });
   }
@@ -509,10 +506,14 @@ export function registerAnnouncementsModule(client: Client): void {
 
     const channelId = pendingEventChannels.get(interaction.user.id);
 
-    const eventName        = interaction.fields.getTextInputValue("event_name").trim();
-    const eventDatetime    = interaction.fields.getTextInputValue("event_datetime").trim();
-    const eventDescription = interaction.fields.getTextInputValue("event_description").trim();
-    const eventImage       = interaction.fields.getTextInputValue("event_image").trim() || undefined;
+    const rawEventName        = interaction.fields.getTextInputValue("event_name").trim();
+    const rawEventDatetime    = interaction.fields.getTextInputValue("event_datetime").trim();
+    const rawEventDescription = interaction.fields.getTextInputValue("event_description").trim();
+    const eventImage          = interaction.fields.getTextInputValue("event_image").trim() || undefined;
+
+    const eventName        = await resolveEmojiCodes(rawEventName,        interaction.guild);
+    const eventDatetime    = await resolveEmojiCodes(rawEventDatetime,    interaction.guild);
+    const eventDescription = await resolveEmojiCodes(rawEventDescription, interaction.guild);
 
     // Delete the setup message
     try {
