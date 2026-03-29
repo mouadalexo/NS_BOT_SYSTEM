@@ -14,14 +14,11 @@ import {
   SlashCommandBuilder,
   ChatInputCommandInteraction,
   StringSelectMenuInteraction,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle,
 } from "discord.js";
+import { readFileSync, writeFileSync, existsSync } from "fs";
+import { join, dirname } from "path";
+import { fileURLToPath } from "url";
 import { isMainGuild } from "../utils/guildFilter.js";
-import { db } from "@workspace/db";
-import { botConfigTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
 import {
   openPvsPanel,
   handlePvsPanelSelect,
@@ -56,7 +53,27 @@ import {
   handleStaffPanelReset,
 } from "./staff.js";
 
-function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const CONFIG_FILE = join(__dirname, "../../../../config.json");
+
+function readPrefix(): string {
+  try {
+    if (existsSync(CONFIG_FILE)) {
+      return JSON.parse(readFileSync(CONFIG_FILE, "utf-8")).prefix ?? "!";
+    }
+  } catch {}
+  return "!";
+}
+
+function writePrefix(p: string) {
+  let data: Record<string, unknown> = {};
+  try { if (existsSync(CONFIG_FILE)) data = JSON.parse(readFileSync(CONFIG_FILE, "utf-8")); } catch {}
+  data.prefix = p;
+  writeFileSync(CONFIG_FILE, JSON.stringify(data, null, 2));
+}
+
+function buildAllCommandsEmbed() {
   return new EmbedBuilder()
     .setColor(0x5000ff)
     .setTitle("📋 Night Stars Bot — All Commands")
@@ -64,66 +81,57 @@ function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
       {
         name: "📣 Announcements (staff with announce role or admin)",
         value: [
-          `\`${ann}ann <text>\` — Post a gold announcement embed with @everyone`,
-          `\`${ann}testann <text>\` — Preview announcement without pinging anyone`,
-          `\`${ann}event\` — Open the event form and post a blurple event embed with @everyone`,
-          `\`${ann}testevent\` — Preview the full event flow without pinging anyone`,
+          "`!announce <text>` — Post a gold announcement embed with `@everyone`",
+          "`!testannounce <text>` — Preview announcement without pinging anyone",
+          "`!event` — Open the event form and post a blurple event embed with `@everyone`",
+          "`!testevent` — Preview the full event flow without pinging anyone",
         ].join("\n"),
         inline: false,
       },
       {
         name: "⚙️ Announcement Setup (admin only)",
         value: [
-          `\`${ann}setannrole @Role\` — Set which role can use announce/event commands`,
-          `\`${ann}addannchannel #ch\` — Add a channel where announce commands work (up to 4)`,
-          `\`${ann}removeannchannel #ch\` — Remove a channel from the list`,
-          `\`${ann}annchannels\` — Show currently allowed announcement channels`,
+          "`!setannouncerole @Role` — Set which role can use announce/event commands",
+          "`!addannouncechannel #ch` — Add a channel where announce commands work (up to 4)",
+          "`!removeannouncechannel #ch` — Remove a channel from the list",
+          "`!announcechannels` — Show currently allowed announcement channels",
         ].join("\n"),
         inline: false,
       },
       {
         name: "🎙️ PVS — Private Voice System (room owners)",
         value: [
-          `\`${pvs}key @user\` — Give/remove access to your room`,
-          `\`${pvs}pull @user\` — Pull someone from the waiting room`,
-          `\`${pvs}see keys\` — List members with access`,
-          `\`${pvs}clear keys\` — Remove all access`,
-          `\`${pvs}name <name>\` — Rename your room`,
+          "`=key @user` — Give/remove access to your room",
+          "`=pull @user` — Pull someone from the waiting room",
+          "`=see keys` — List members with access",
+          "`=clear keys` — Remove all access",
+          "`=name <name>` — Rename your room",
         ].join("\n"),
         inline: false,
       },
       {
         name: "🎙️ PVS — Staff (PVS Manager role)",
         value: [
-          `\`${mgr}pv @member\` — Create a Premium Voice room`,
-          `\`${mgr}pv delete @member\` — Remove a Premium Voice room`,
+          "`+pv @member` — Create a Premium Voice room",
+          "`+pv delete @member` — Remove a Premium Voice room",
         ].join("\n"),
         inline: false,
       },
       {
-        name: "🎮 CTP — Category Game Tagging",
+        name: "🎮 CTP — Call to Play",
         value: [
-          `\`${ctp}tag\` — Ping the game role for your voice channel (auto-detected by CTP category)`,
+          "`-tag` — Ping the game role for your current voice channel (auto-detected by category)",
           "Each game has its own cooldown — the bot will tell you if one is active",
         ].join("\n"),
         inline: false,
       },
       {
-        name: "🎮 CTP — Onetap Game Tagging",
+        name: "🔍 Help",
         value: [
-          `\`${ctp}<gamename>\` — Ping a game role while in the onetap temp voice category`,
-          `Example: \`${ctp}amongus\` pings Among Us players`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "⚙️ Setup & Prefix",
-        value: [
-          "`/setup pvs` — Configure the Private Voice System",
-          "`/setup ctp-category` — Configure CTP for category-based game tagging",
-          "`/setup ctp-onetap` — Configure CTP onetap temp voice tagging",
-          "`/setup staff` — Set the staff role",
-          "`/prefix` — View and edit all system prefixes (admin only)",
+          "`/help all` — This menu",
+          "`/help pvs` — PVS commands in detail",
+          "`/help ctp` — CTP commands in detail",
+          "`/help announcements` — Announcement commands in detail",
         ].join("\n"),
         inline: false,
       },
@@ -219,10 +227,7 @@ export async function registerPanelCommands(client: Client) {
       sub.setName("pvs").setDescription("Set up the Private Voice System (PVS)")
     )
     .addSubcommand((sub) =>
-      sub.setName("ctp-category").setDescription("Set up CTP for games with their own category")
-    )
-    .addSubcommand((sub) =>
-      sub.setName("ctp-onetap").setDescription("Set up CTP Onetap — temp voice game tagging")
+      sub.setName("ping").setDescription("Set up the Call to Play system (CTP)")
     )
     .addSubcommand((sub) =>
       sub.setName("staff").setDescription("Set the staff role — grants access to all bot systems")
@@ -231,7 +236,19 @@ export async function registerPanelCommands(client: Client) {
 
   const helpCommand = new SlashCommandBuilder()
     .setName("help")
-    .setDescription("Show all Night Stars Bot commands and current prefixes")
+    .setDescription("Show how to use Night Stars bot systems")
+    .addSubcommand((sub) =>
+      sub.setName("all").setDescription("Show every NS Bot command at a glance")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("pvs").setDescription("Show all PVS (Private Voice System) commands")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("ctp").setDescription("Show all CTP (Call to Play) commands")
+    )
+    .addSubcommand((sub) =>
+      sub.setName("announcements").setDescription("Show all announcement & event commands")
+    )
     .toJSON();
 
   const pingCommand = new SlashCommandBuilder()
@@ -241,8 +258,17 @@ export async function registerPanelCommands(client: Client) {
 
   const prefixCommand = new SlashCommandBuilder()
     .setName("prefix")
-    .setDescription("View and configure all system command prefixes")
+    .setDescription("View or change the bot text command prefix")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .addSubcommand((sub) => sub.setName("view").setDescription("Show the current prefix"))
+    .addSubcommand((sub) =>
+      sub
+        .setName("set")
+        .setDescription("Change the text command prefix")
+        .addStringOption((opt) =>
+          opt.setName("prefix").setDescription("New prefix (e.g. ! . ?)").setRequired(true).setMaxLength(5)
+        )
+    )
     .toJSON();
 
   const rest = new REST().setToken(token);
@@ -285,10 +311,18 @@ export async function registerPanelCommands(client: Client) {
           ephemeral: true,
         });
       } else if (name === "prefix") {
-        await openPrefixPanel(interaction as ChatInputCommandInteraction);
+        await handleNSBotPrefixCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "help") {
-        const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
-        await interaction.reply({ embeds: [buildAllCommandsEmbed(pvs, mgr, ctp, ann)], ephemeral: true });
+        const sub = (interaction as ChatInputCommandInteraction).options.getSubcommand();
+        if (sub === "all") {
+          await interaction.reply({ embeds: [buildAllCommandsEmbed()], ephemeral: true });
+        } else if (sub === "pvs") {
+          await interaction.reply({ embeds: [buildPvsInfoEmbed()], ephemeral: true });
+        } else if (sub === "ctp") {
+          await interaction.reply({ embeds: [buildCtpInfoEmbed()], ephemeral: true });
+        } else if (sub === "announcements") {
+          await interaction.reply({ embeds: [buildAnnouncementsHelpEmbed()], ephemeral: true });
+        }
       }
       return;
     }
@@ -299,7 +333,6 @@ export async function registerPanelCommands(client: Client) {
         "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
         "cp_open_details", "cp_save", "cp_reset",
         "sp_save", "sp_reset",
-        "pfx_edit",
       ];
       if (panelIds.includes(interaction.customId)) {
         await handleButtonInteraction(interaction as ButtonInteraction);
@@ -310,7 +343,7 @@ export async function registerPanelCommands(client: Client) {
     if (interaction.isStringSelectMenu()) {
       if (interaction.customId === "cp_game_select") {
         try { await handleCtpGameSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP game select error:", err); }
-      } else if (interaction.customId.startsWith("ct_")) {
+      } else if (customId.startsWith("ct_")) {
         try { await handleCtpTagStringSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP temp select error:", err); }
       }
       return;
@@ -327,11 +360,9 @@ export async function registerPanelCommands(client: Client) {
     }
 
     if (interaction.isModalSubmit()) {
-      if (interaction.customId === "pfx_modal") {
-        try { await handlePrefixModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Prefix modal error:", err); }
-      } else if (interaction.customId === "cp_details_modal") {
+      if (interaction.customId === "cp_details_modal") {
         try { await handleCtpDetailsModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP modal error:", err); }
-      } else if (interaction.customId.startsWith("ct_")) {
+      } else if (customId.startsWith("ct_")) {
         try { await handleCtpTagModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP temp modal error:", err); }
       }
     }
@@ -353,10 +384,8 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
 
   if (sub === "pvs") {
     await openPvsPanel(interaction as unknown as ButtonInteraction);
-  } else if (sub === "ctp-category") {
+  } else if (sub === "ping") {
     await openCtpManagePanel(interaction as unknown as ButtonInteraction);
-  } else if (sub === "ctp-onetap") {
-    await openCtpTagPanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "staff") {
     await openStaffPanel(interaction as unknown as ButtonInteraction);
   }
@@ -391,8 +420,6 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleStaffPanelSave(interaction);
     } else if (customId === "sp_reset") {
       await handleStaffPanelReset(interaction);
-    } else if (customId === "pfx_edit") {
-      await handlePrefixEditButton(interaction);
     }
   } catch (err) {
     console.error("Panel button error:", err);
@@ -431,84 +458,30 @@ async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInte
   }
 }
 
-async function getGuildPrefixes(guildId: string) {
-  const rows = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
-  const row = rows[0];
-  return {
-    pvs: row?.pvsPrefix ?? "=",
-    mgr: row?.managerPrefix ?? "+",
-    ctp: row?.ctpPrefix ?? "-",
-    ann: row?.annPrefix ?? "!",
-  };
-}
-
-async function openPrefixPanel(interaction: ChatInputCommandInteraction) {
-  const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
-  const embed = new EmbedBuilder()
-    .setColor(0x5000ff)
-    .setTitle("⚙️ System Prefixes")
-    .setDescription("These prefixes define how members trigger each bot system. Click **Edit Prefixes** to change them.")
-    .addFields(
-      { name: "🎙️ PVS Prefix", value: `\`${pvs}\``, inline: true },
-      { name: "🎙️ Manager Prefix", value: `\`${mgr}\``, inline: true },
-      { name: "🎮 CTP Prefix", value: `\`${ctp}\``, inline: true },
-      { name: "📣 Announcements Prefix", value: `\`${ann}\``, inline: true },
-    )
-    .setFooter({ text: "Night Stars • NS Bot" });
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("pfx_edit").setLabel("Edit Prefixes").setStyle(ButtonStyle.Primary),
-  );
-  await interaction.reply({ embeds: [embed], components: [row], ephemeral: true });
-}
-
-async function handlePrefixEditButton(interaction: ButtonInteraction) {
-  const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
-  const modal = new ModalBuilder().setCustomId("pfx_modal").setTitle("Edit System Prefixes");
-  const pvsInput = new TextInputBuilder()
-    .setCustomId("pfx_pvs").setLabel("PVS Prefix (room owner commands)").setStyle(TextInputStyle.Short)
-    .setValue(pvs).setMinLength(1).setMaxLength(5).setRequired(true);
-  const mgrInput = new TextInputBuilder()
-    .setCustomId("pfx_mgr").setLabel("Manager Prefix (staff PV commands)").setStyle(TextInputStyle.Short)
-    .setValue(mgr).setMinLength(1).setMaxLength(5).setRequired(true);
-  const ctpInput = new TextInputBuilder()
-    .setCustomId("pfx_ctp").setLabel("CTP Prefix (call-to-play commands)").setStyle(TextInputStyle.Short)
-    .setValue(ctp).setMinLength(1).setMaxLength(5).setRequired(true);
-  const annInput = new TextInputBuilder()
-    .setCustomId("pfx_ann").setLabel("Announcements Prefix (ann commands)").setStyle(TextInputStyle.Short)
-    .setValue(ann).setMinLength(1).setMaxLength(5).setRequired(true);
-  modal.addComponents(
-    new ActionRowBuilder<TextInputBuilder>().addComponents(pvsInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(mgrInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(ctpInput),
-    new ActionRowBuilder<TextInputBuilder>().addComponents(annInput),
-  );
-  await interaction.showModal(modal);
-}
-
-async function handlePrefixModalSubmit(interaction: ModalSubmitInteraction) {
-  const guildId = interaction.guildId!;
-  const pvs = interaction.fields.getTextInputValue("pfx_pvs").trim();
-  const mgr = interaction.fields.getTextInputValue("pfx_mgr").trim();
-  const ctp = interaction.fields.getTextInputValue("pfx_ctp").trim();
-  const ann = interaction.fields.getTextInputValue("pfx_ann").trim();
-
-  await db
-    .update(botConfigTable)
-    .set({ pvsPrefix: pvs, managerPrefix: mgr, ctpPrefix: ctp, annPrefix: ann })
-    .where(eq(botConfigTable.guildId, guildId));
-
-  const embed = new EmbedBuilder()
-    .setColor(0x00c851)
-    .setTitle("✅ Prefixes Updated")
-    .addFields(
-      { name: "🎙️ PVS Prefix", value: `\`${pvs}\``, inline: true },
-      { name: "🎙️ Manager Prefix", value: `\`${mgr}\``, inline: true },
-      { name: "🎮 CTP Prefix", value: `\`${ctp}\``, inline: true },
-      { name: "📣 Announcements Prefix", value: `\`${ann}\``, inline: true },
-    )
-    .setFooter({ text: "Night Stars • NS Bot" });
-  const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("pfx_edit").setLabel("Edit Again").setStyle(ButtonStyle.Secondary),
-  );
-  await interaction.update({ embeds: [embed], components: [row] });
+async function handleNSBotPrefixCommand(interaction: ChatInputCommandInteraction) {
+  const sub = interaction.options.getSubcommand();
+  if (sub === "view") {
+    const current = readPrefix();
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5000ff)
+          .setDescription(`Current prefix: **\`${current}\`**`)
+          .setFooter({ text: "Night Stars • NS Bot" }),
+      ],
+      ephemeral: true,
+    });
+  } else if (sub === "set") {
+    const newPrefix = interaction.options.getString("prefix", true).trim();
+    writePrefix(newPrefix);
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x5000ff)
+          .setDescription(`Prefix updated to **\`${newPrefix}\`**`)
+          .setFooter({ text: "Night Stars • NS Bot" }),
+      ],
+      ephemeral: true,
+    });
+  }
 }

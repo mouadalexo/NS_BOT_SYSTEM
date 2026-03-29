@@ -127,15 +127,15 @@ export function registerAnnouncementsModule(client: Client): void {
 
     const raw = message.content.trim();
 
-    // ── !setannouncerole @role ──────────────────────────────────────────────
-    if (raw.startsWith("!setannouncerole")) {
+    // ── !setannrole @role ──────────────────────────────────────────────
+    if (raw.startsWith("!setannrole")) {
       if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
         await tempReply(message, "❌ Only admins can set the announcements role.");
         return;
       }
       const match = raw.match(/<@&(\d+)>/);
       if (!match) {
-        await tempReply(message, "❌ Please mention a role: `!setannouncerole @Role`");
+        await tempReply(message, "❌ Please mention a role: `!setannrole @Role`");
         return;
       }
       const roleId = match[1];
@@ -146,21 +146,21 @@ export function registerAnnouncementsModule(client: Client): void {
 
       await message.delete().catch(() => {});
       const confirm = await message.channel.send(
-        `✅ Announcements role set to <@&${roleId}>. Members with this role can now use \`!announce\` and \`!event\`.`
+        `✅ Announcements role set to <@&${roleId}>. Members with this role can now use \`!ann\` and \`!event\`.`
       );
       setTimeout(() => confirm.delete().catch(() => {}), 8000);
       return;
     }
 
-    // ── !addannouncechannel #channel ────────────────────────────────────────
-    if (raw.startsWith("!addannouncechannel")) {
+    // ── !addannchannel #channel ────────────────────────────────────────
+    if (raw.startsWith("!addannchannel")) {
       if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
         await tempReply(message, "❌ Only admins can configure announcement channels.");
         return;
       }
       const match = raw.match(/<#(\d+)>/);
       if (!match) {
-        await tempReply(message, "❌ Mention a channel: `!addannouncechannel #channel`");
+        await tempReply(message, "❌ Mention a channel: `!addannchannel #channel`");
         return;
       }
       const channelId = match[1];
@@ -170,7 +170,7 @@ export function registerAnnouncementsModule(client: Client): void {
         return;
       }
       if (current.length >= 4) {
-        await tempReply(message, "❌ You can only have up to 4 announcement channels. Remove one first with `!removeannouncechannel`.");
+        await tempReply(message, "❌ You can only have up to 4 announcement channels. Remove one first with `!removeannchannel`.");
         return;
       }
       current.push(channelId);
@@ -187,15 +187,15 @@ export function registerAnnouncementsModule(client: Client): void {
       return;
     }
 
-    // ── !removeannouncechannel #channel ─────────────────────────────────────
-    if (raw.startsWith("!removeannouncechannel")) {
+    // ── !removeannchannel #channel ─────────────────────────────────────
+    if (raw.startsWith("!removeannchannel")) {
       if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
         await tempReply(message, "❌ Only admins can configure announcement channels.");
         return;
       }
       const match = raw.match(/<#(\d+)>/);
       if (!match) {
-        await tempReply(message, "❌ Mention a channel: `!removeannouncechannel #channel`");
+        await tempReply(message, "❌ Mention a channel: `!removeannchannel #channel`");
         return;
       }
       const channelId = match[1];
@@ -220,8 +220,8 @@ export function registerAnnouncementsModule(client: Client): void {
       return;
     }
 
-    // ── !announcechannels ────────────────────────────────────────────────────
-    if (raw === "!announcechannels") {
+    // ── !annchannels ────────────────────────────────────────────────────
+    if (raw === "!annchannels") {
       if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
         await tempReply(message, "❌ Only admins can view announcement channel config.");
         return;
@@ -234,8 +234,8 @@ export function registerAnnouncementsModule(client: Client): void {
       return;
     }
 
-    // ── !announce [text] ────────────────────────────────────────────────────
-    if (raw.startsWith("!announce")) {
+    // ── !ann [text] ────────────────────────────────────────────────────
+    if (raw.startsWith("!ann")) {
       if (!await isAuthorized(message)) {
         await tempReply(message, "❌ You don't have permission to post announcements.");
         return;
@@ -247,12 +247,12 @@ export function registerAnnouncementsModule(client: Client): void {
         return;
       }
 
-      const text = raw.slice("!announce".length).trim();
+      const text = raw.slice("!ann".length).trim();
       const attachment = message.attachments.first();
       const imageUrl = attachment?.url;
 
       if (!text && !imageUrl) {
-        await tempReply(message, "❌ Write your announcement after `!announce`, or attach an image.");
+        await tempReply(message, "❌ Write your announcement after `!ann`, or attach an image.");
         return;
       }
 
@@ -269,19 +269,19 @@ export function registerAnnouncementsModule(client: Client): void {
       return;
     }
 
-    // ── !testannounce [text] ────────────────────────────────────────────────
-    if (raw.startsWith("!testannounce")) {
+    // ── !testann [text] ────────────────────────────────────────────────
+    if (raw.startsWith("!testann")) {
       if (!await isAuthorized(message)) {
         await tempReply(message, "❌ You don't have permission to test announcements.");
         return;
       }
 
-      const text = raw.slice("!testannounce".length).trim();
+      const text = raw.slice("!testann".length).trim();
       const attachment = message.attachments.first();
       const imageUrl = attachment?.url;
 
       if (!text && !imageUrl) {
-        await tempReply(message, "❌ Write your announcement after `!testannounce`, or attach an image.");
+        await tempReply(message, "❌ Write your announcement after `!testann`, or attach an image.");
         return;
       }
 

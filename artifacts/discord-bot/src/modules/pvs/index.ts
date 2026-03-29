@@ -110,6 +110,24 @@ async function pushWaitingRoomToBottom(guild: Guild, categoryId: string, waiting
 }
 
 export function registerPVSModule(client: Client) {
+  client.once("clientReady", async () => {
+    try {
+      const allVoices = await db.select().from(pvsVoicesTable);
+      for (const row of allVoices) {
+        const guild = client.guilds.cache.get(row.guildId);
+        if (!guild) continue;
+        const channel = guild.channels.cache.get(row.channelId);
+        if (!channel) {
+          await db.delete(pvsKeysTable).where(eq(pvsKeysTable.channelId, row.channelId));
+          await db.delete(pvsVoicesTable).where(eq(pvsVoicesTable.channelId, row.channelId));
+          console.log("[PVS] Cleaned stale voice record channel " + row.channelId);
+        }
+      }
+    } catch (err) {
+      console.error("[PVS] Ready cleanup error:", err);
+    }
+  });
+
   client.on("messageCreate", async (message) => {
     try {
       if (message.author.bot) return;
@@ -167,28 +185,14 @@ async function createPrivateVoice(
       name: `${member.displayName} Premium Voice`,
       type: ChannelType.GuildVoice,
       parent: categoryId ?? undefined,
-      permissionOverwrites: [
-        {
-          id: guild.id,
-          deny: [PermissionsBitField.Flags.Connect],
-        },
-        {
-          id: member.id,
-          type: OverwriteType.Member,
-          allow: OWNER_PERMS,
-        },
-        {
-          id: guild.members.me!.id,
-          type: OverwriteType.Member,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.Connect,
-            PermissionsBitField.Flags.ManageChannels,
-            PermissionsBitField.Flags.MoveMembers,
-          ],
-        },
-      ],
     });
+    if (categoryId) await newChannel.lockPermissions().catch(() => {});
+    await newChannel.permissionOverwrites.edit(member.id, {
+      ViewChannel: true, Connect: true, Speak: true, Stream: true,
+      ReadMessageHistory: true, DeafenMembers: true, UseVAD: true,
+      UseSoundboard: true, UseExternalSounds: true, SendMessages: true,
+      EmbedLinks: true, AttachFiles: true, AddReactions: true,
+    }).catch(() => {});
 
     await db.insert(pvsVoicesTable).values({
       guildId: guild.id,
@@ -262,25 +266,14 @@ async function handleManagerCreatePVS(message: Message, manager: GuildMember, ar
       name: `${target.displayName} Premium Voice`,
       type: ChannelType.GuildVoice,
       parent: categoryId ?? undefined,
-      permissionOverwrites: [
-        { id: message.guild!.id, deny: [PermissionsBitField.Flags.Connect] },
-        {
-          id: target.id,
-          type: OverwriteType.Member,
-          allow: OWNER_PERMS,
-        },
-        {
-          id: message.guild!.members.me!.id,
-          type: OverwriteType.Member,
-          allow: [
-            PermissionsBitField.Flags.ViewChannel,
-            PermissionsBitField.Flags.Connect,
-            PermissionsBitField.Flags.ManageChannels,
-            PermissionsBitField.Flags.MoveMembers,
-          ],
-        },
-      ],
     });
+    if (categoryId) await newChannel.lockPermissions().catch(() => {});
+    await newChannel.permissionOverwrites.edit(target.id, {
+      ViewChannel: true, Connect: true, Speak: true, Stream: true,
+      ReadMessageHistory: true, DeafenMembers: true, UseVAD: true,
+      UseSoundboard: true, UseExternalSounds: true, SendMessages: true,
+      EmbedLinks: true, AttachFiles: true, AddReactions: true,
+    }).catch(() => {});
 
     await db.insert(pvsVoicesTable).values({
       guildId: message.guild!.id,

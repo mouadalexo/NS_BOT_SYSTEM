@@ -153,6 +153,12 @@ function buildManageComponents(games: Awaited<ReturnType<typeof getGuildGames>>,
       )
   );
 
+  const tempTagRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId("ct_open")
+      .setLabel("🎲 Temp Voice Tags")
+      .setStyle(ButtonStyle.Secondary),
+  );
   if (selectedCategoryId) {
     const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -168,7 +174,7 @@ function buildManageComponents(games: Awaited<ReturnType<typeof getGuildGames>>,
         .setLabel("Add New")
         .setStyle(ButtonStyle.Success),
     );
-    return [selectRow, actionRow];
+    return [selectRow, actionRow, tempTagRow];
   }
 
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -177,7 +183,7 @@ function buildManageComponents(games: Awaited<ReturnType<typeof getGuildGames>>,
       .setLabel("Add New")
       .setStyle(ButtonStyle.Success),
   );
-  return [selectRow, actionRow];
+  return [selectRow, actionRow, tempTagRow];
 }
 
 export async function handleCtpGameSelect(interaction: StringSelectMenuInteraction) {
