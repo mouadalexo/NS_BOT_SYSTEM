@@ -301,7 +301,7 @@ export async function registerPanelCommands(client: Client) {
         "sp_save", "sp_reset",
         "pfx_edit",
       ];
-      if (panelIds.includes(interaction.customId)) {
+      if (panelIds.includes(interaction.customId) || interaction.customId.startsWith("ct_")) {
         await handleButtonInteraction(interaction as ButtonInteraction);
       }
       return;
