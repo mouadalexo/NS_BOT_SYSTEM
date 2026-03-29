@@ -29,14 +29,33 @@ async function getAnnPrefix(guildId: string): Promise<string> {
 }
 
 // ── Resolve emoji codes from guild cache ──────────────────────────────────────
-function resolveEmojiCodes(text: string, guild: Guild): string {
-  return text.replace(/<(a?):([a-zA-Z0-9_]+):(\d+)>/g, (match, animated, name, id) => {
-    const byId = guild.emojis.cache.get(id);
-    if (byId) return byId.toString();
-    const byName = guild.emojis.cache.find((e) => e.name === name);
-    if (byName) return byName.toString();
-    return match;
-  });
+async function resolveEmojiCodes(text: string, guild: Guild): Promise<string> {
+  const emojiRegex = /<(a?):([a-zA-Z0-9_]+):(\d+)>/g;
+  const matches = [...text.matchAll(emojiRegex)];
+  if (matches.length === 0) return text;
+
+  // Ensure emoji cache is fresh
+  try { await guild.emojis.fetch(); } catch { /* ignore */ }
+
+  console.log(`[Ann] Resolving emojis in text: ${text}`);
+  console.log(`[Ann] Guild emoji cache size: ${guild.emojis.cache.size}`);
+
+  let result = text;
+  for (const match of matches) {
+    const [fullMatch, , name, id] = match;
+    // By ID in current guild
+    let emoji = guild.emojis.cache.get(id);
+    if (!emoji) {
+      // By name (case-insensitive) in current guild
+      emoji = guild.emojis.cache.find((e) => e.name?.toLowerCase() === name.toLowerCase()) ?? undefined;
+    }
+    console.log(`[Ann] Emoji ${fullMatch} → ${emoji ? emoji.toString() : "not found in guild cache"}`);
+    if (emoji) {
+      result = result.replace(fullMatch, emoji.toString());
+    }
+  }
+  console.log(`[Ann] Final resolved text: ${result}`);
+  return result;
 }
 
 // ── Colors ────────────────────────────────────────────────────────────────────
@@ -273,7 +292,7 @@ export function registerAnnouncementsModule(client: Client): void {
         return;
       }
 
-      const resolvedText = resolveEmojiCodes(text, message.guild);
+      const resolvedText = await resolveEmojiCodes(text, message.guild);
 
       const embed = buildAnnouncementEmbed(
         { name: message.guild.name, iconURL: () => message.guild!.iconURL() },
@@ -308,7 +327,7 @@ export function registerAnnouncementsModule(client: Client): void {
         return;
       }
 
-      const resolvedText = resolveEmojiCodes(text, message.guild);
+      const resolvedText = await resolveEmojiCodes(text, message.guild);
 
       const channel = message.channel as TextChannel;
       await message.delete().catch(() => {});
