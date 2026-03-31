@@ -137,6 +137,7 @@ async function getMemberHelpEmbed(guildId: string) {
         ].join("\n"),
         inline: false,
       },
+      { name: "\u200B", value: "** **", inline: false },
       {
         name: "\u{1F3AE} CTP \u2014 Category Game Tagging",
         value: [
@@ -145,6 +146,7 @@ async function getMemberHelpEmbed(guildId: string) {
         ].join("\n"),
         inline: false,
       },
+      { name: "\u200B", value: "** **", inline: false },
       {
         name: "\u{1F3AE} CTP \u2014 Onetap Game Tagging",
         value: [
