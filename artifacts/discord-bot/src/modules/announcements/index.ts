@@ -211,7 +211,22 @@ function buildSetupPanelComponents(state: AnnSetupState): ActionRowBuilder<Butto
       .setStyle(ButtonStyle.Secondary),
   );
 
-  return [new ActionRowBuilder<ButtonBuilder>().addComponents(...row1Buttons)];
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(...row1Buttons),
+  ];
+
+  if (state.filled) {
+    rows.push(
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`an_preview:${uid}`)
+          .setLabel("👁️ Preview")
+          .setStyle(ButtonStyle.Secondary),
+      )
+    );
+  }
+
+  return rows;
 }
 
 function buildColorSubPanelEmbed(): EmbedBuilder {
@@ -363,7 +378,8 @@ export function registerAnnouncementsModule(client: Client): void {
         cid.startsWith("an_tc_color_title:") ||
         cid.startsWith("an_tc_color_desc:")  ||
         cid.startsWith("an_tc_color_add:")   ||
-        cid.startsWith("an_tc_color_back:")
+        cid.startsWith("an_tc_color_back:") ||
+        cid.startsWith("an_preview:")
       ) {
         await handleAnnButton(interaction as ButtonInteraction, client);
         return;
@@ -516,6 +532,39 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
       )
     );
     await interaction.showModal(modal);
+    return;
+  }
+
+  // Preview
+  if (customId.startsWith("an_preview:")) {
+    if (!state.filled) {
+      await interaction.reply({ content: "❌ Fill in the details first.", ephemeral: true });
+      return;
+    }
+    const guild = client.guilds.cache.get(state.guildId);
+    if (!guild) { await interaction.reply({ content: "❌ Guild not found.", ephemeral: true }); return; }
+
+    const colors = await getAnnColors(state.guildId);
+    const isEvent = state.mode === "event";
+    const titleColor: ColorResolvable = isEvent ? colors.eventTitleColor : colors.annTitleColor;
+    const descColor:  ColorResolvable = isEvent ? colors.eventDescColor  : colors.annDescColor;
+    const addColor:   ColorResolvable = isEvent ? colors.eventColor      : colors.annAddColor;
+
+    const titleResolved = state.title      ? await resolveEmojiCodes(state.title, guild)      : "";
+    const descResolved  =                    await resolveEmojiCodes(state.description, guild);
+    const addResolved   = state.additional ? await resolveEmojiCodes(state.additional, guild) : "";
+    const imageUrl      = state.modalImageUrl || state.attachmentImageUrl;
+
+    const previewEmbeds = buildAnnouncementEmbeds(
+      titleResolved, descResolved, addResolved,
+      titleColor, descColor, addColor, imageUrl
+    );
+
+    await interaction.reply({
+      content: "-# 👁️ Preview — not posted yet. Use **✏️ Edit Details** to change or **✅ Send** to post.",
+      embeds: previewEmbeds,
+      ephemeral: true,
+    });
     return;
   }
 
