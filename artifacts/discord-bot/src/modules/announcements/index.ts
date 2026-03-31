@@ -12,545 +12,660 @@ import {
   Message,
   ColorResolvable,
   Guild,
+  ButtonInteraction,
+  ModalSubmitInteraction,
 } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-// ── Ann prefix from DB ────────────────────────────────────────────────────────
+// ── Bold Unicode (Math Sans-Serif Bold — letters + digits) ────────────────────
+function toBold(text: string): string {
+  const result: string[] = [];
+  for (const ch of text) {
+    const c = ch.codePointAt(0)!;
+    if (c >= 65 && c <= 90)  result.push(String.fromCodePoint(0x1D5D4 + c - 65));
+    else if (c >= 97 && c <= 122)  result.push(String.fromCodePoint(0x1D5EE + c - 97));
+    else if (c >= 48 && c <= 57)   result.push(String.fromCodePoint(0x1D7EC + c - 48));
+    else result.push(ch);
+  }
+  return result.join("");
+}
+
+function isValidUrl(str: string): boolean {
+  try { new URL(str); return true; } catch { return false; }
+}
+
 async function getAnnPrefix(guildId: string): Promise<string> {
   const [cfg] = await db
-    .select({ annPrefix: botConfigTable.annPrefix })
+    .select({ pvsPrefix: botConfigTable.pvsPrefix })
     .from(botConfigTable)
     .where(eq(botConfigTable.guildId, guildId))
     .limit(1);
-  return cfg?.annPrefix ?? "!";
+  return cfg?.pvsPrefix ?? "=";
 }
 
-// ── Resolve emoji codes from guild cache ──────────────────────────────────────
 async function resolveEmojiCodes(text: string, guild: Guild): Promise<string> {
-  const emojiRegex = /<(a?):([a-zA-Z0-9_]+):(\d+)>/g;
-  const matches = [...text.matchAll(emojiRegex)];
-  if (matches.length === 0) return text;
-
-  try { await guild.emojis.fetch(); } catch { /* ignore */ }
-
-  let result = text;
-  for (const match of matches) {
-    const [fullMatch, , name, id] = match;
-    let emoji = guild.emojis.cache.get(id);
-    if (!emoji) {
-      emoji = guild.emojis.cache.find((e) => e.name?.toLowerCase() === name.toLowerCase()) ?? undefined;
-    }
-    if (emoji) {
-      result = result.replace(fullMatch, emoji.toString());
-    }
-  }
-  return result;
+  try { await guild.emojis.fetch(); } catch {}
+  return text.replace(/;([a-zA-Z0-9_~]+)/g, (_match, name) => {
+    const emoji =
+      guild.emojis.cache.find((e) => e.name === name) ??
+      guild.emojis.cache.find((e) => e.name?.toLowerCase() === name.toLowerCase());
+    return emoji ? emoji.toString() : _match;
+  });
 }
 
-// ── Validate a URL before passing to Discord embed ────────────────────────────
-function isValidUrl(url: string): boolean {
-  try { new URL(url); return true; } catch { return false; }
-}
-
-// ── Colors ────────────────────────────────────────────────────────────────────
-const GOLD    = 0xffe500 as ColorResolvable;
-const BLURPLE = 0x5865f2 as ColorResolvable;
-const TEST_COLOR = 0xff6b00 as ColorResolvable;
-
-// userId → channelId  (where to post the final event)
-const pendingEventChannels = new Map<string, string>();
-// userId → isTest flag
-const pendingEventTestMode = new Map<string, boolean>();
-
-// ── Permission check ──────────────────────────────────────────────────────────
-async function isAuthorized(message: Message): Promise<boolean> {
-  const member = message.member;
-  if (!member || !message.guildId) return false;
-  if (member.permissions.has(PermissionFlagsBits.Administrator)) return true;
-
+async function getAnnColors(guildId: string) {
   const [cfg] = await db
-    .select({ announcementsRoleId: botConfigTable.announcementsRoleId })
+    .select({
+      annTitleColor: botConfigTable.annTitleColor,
+      annDescColor:  botConfigTable.annDescColor,
+      annAddColor:   botConfigTable.annAddColor,
+      eventColor:    botConfigTable.eventColor,
+    })
+    .from(botConfigTable)
+    .where(eq(botConfigTable.guildId, guildId))
+    .limit(1);
+  const parseHex = (s: string | null | undefined, fallback: number): ColorResolvable => {
+    if (!s) return fallback as ColorResolvable;
+    const num = parseInt(s.replace("#", ""), 16);
+    return (isNaN(num) ? fallback : num) as ColorResolvable;
+  };
+  return {
+    annTitleColor: parseHex(cfg?.annTitleColor, 0xffe500),
+    annDescColor:  parseHex(cfg?.annDescColor,  0xffe500),
+    annAddColor:   parseHex(cfg?.annAddColor,   0xffe500),
+    eventColor:    parseHex(cfg?.eventColor,    0x5865f2),
+  };
+}
+
+async function isAuthorized(message: Message): Promise<{ authorized: boolean; eventHosterOnly: boolean }> {
+  const member = message.member;
+  if (!member || !message.guildId) return { authorized: false, eventHosterOnly: false };
+  if (member.permissions.has(PermissionFlagsBits.Administrator)) return { authorized: true, eventHosterOnly: false };
+  const [cfg] = await db
+    .select({
+      announcementsRoleId: botConfigTable.announcementsRoleId,
+      eventHosterRoleId:   botConfigTable.eventHosterRoleId,
+    })
     .from(botConfigTable)
     .where(eq(botConfigTable.guildId, message.guildId))
     .limit(1);
-
-  const roleId = cfg?.announcementsRoleId;
-  if (!roleId) return false;
-  return member.roles.cache.has(roleId);
+  const hasAnnRole   = !!(cfg?.announcementsRoleId && member.roles.cache.has(cfg.announcementsRoleId));
+  const hasEventRole = !!(cfg?.eventHosterRoleId   && member.roles.cache.has(cfg.eventHosterRoleId));
+  if (hasAnnRole)   return { authorized: true, eventHosterOnly: false };
+  if (hasEventRole) return { authorized: true, eventHosterOnly: true };
+  return { authorized: false, eventHosterOnly: false };
 }
 
-// ── Allowed channels check ────────────────────────────────────────────────────
 async function getAllowedChannels(guildId: string): Promise<string[]> {
   const [cfg] = await db
     .select({ announcementChannelsJson: botConfigTable.announcementChannelsJson })
     .from(botConfigTable)
     .where(eq(botConfigTable.guildId, guildId))
     .limit(1);
-
   if (!cfg?.announcementChannelsJson) return [];
-  try {
-    return JSON.parse(cfg.announcementChannelsJson) as string[];
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(cfg.announcementChannelsJson) as string[]; } catch { return []; }
 }
 
-// ── Temp reply then auto-delete ───────────────────────────────────────────────
 async function tempReply(message: Message, text: string, ms = 8000) {
   const reply = await message.reply(text);
   setTimeout(() => reply.delete().catch(() => {}), ms);
 }
 
-// ── Announcement embed ────────────────────────────────────────────────────────
-function buildAnnouncementEmbed(
-  guild: { name: string; iconURL: () => string | null },
-  text: string,
-  imageUrl?: string,
-  isTest = false,
-) {
-  const embed = new EmbedBuilder()
-    .setColor(isTest ? TEST_COLOR : GOLD)
-    .setAuthor({
-      name: isTest ? `[TEST] ${guild.name}` : guild.name,
-      iconURL: guild.iconURL() ?? undefined,
-    })
-    .setDescription(text)
-    .setTimestamp();
+// ── State ─────────────────────────────────────────────────────────────────────
+interface AnnSetupState {
+  userId: string;
+  guildId: string;
+  channelId: string;        // channel where the ann will be posted
+  panelChannelId: string;   // channel where the setup panel is
+  panelMessageId?: string;  // message ID of the setup panel
+  title: string;
+  description: string;
+  additional: string;
+  modalImageUrl: string;
+  attachmentImageUrl?: string;
+  tagOn: boolean;
+  mode: "ann" | "event";
+  lockedToEvent: boolean;
+  filled: boolean;
+}
 
-  if (imageUrl && isValidUrl(imageUrl)) embed.setImage(imageUrl);
-  if (isTest) {
-    embed.setFooter({ text: "🧪 Test mode — not sent to @everyone" });
+const annSetupState = new Map<string, AnnSetupState>();
+const SEP = "\u2500".repeat(32);
+
+// ── Panel Embed & Components ──────────────────────────────────────────────────
+function buildSetupPanelEmbed(state: AnnSetupState): EmbedBuilder {
+  const isEvent = state.mode === "event";
+  const color = (isEvent ? 0x5865f2 : 0xffe500) as ColorResolvable;
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(isEvent ? "\uD83C\uDF89 Event Setup" : "\uD83D\uDCE3 Announcement Setup");
+
+  if (state.filled) {
+    const lines: string[] = [];
+    if (state.title) lines.push(`**Title:** ${state.title}`);
+    const desc = state.description.length > 120 ? state.description.slice(0, 120) + "\u2026" : state.description;
+    lines.push(`**Description:** ${desc}`);
+    if (state.additional) {
+      const add = state.additional.length > 80 ? state.additional.slice(0, 80) + "\u2026" : state.additional;
+      lines.push(`**Additional:** ${add}`);
+    }
+    if (state.modalImageUrl) lines.push("**Image:** set \u2705");
+    lines.push("", "-# Click **Send** to post.");
+    embed.setDescription(lines.join("\n"));
+  } else {
+    embed.setDescription(
+      "Fill in the details, then click **Send**.\n\n" +
+      "-# Only you can use this panel."
+    );
   }
   return embed;
 }
 
-// ── Event embed ───────────────────────────────────────────────────────────────
-function buildEventEmbed(
-  guild: { name: string; iconURL: () => string | null },
-  name: string,
-  datetime: string,
-  description: string,
-  imageUrl?: string,
-  isTest = false,
-) {
-  const embed = new EmbedBuilder()
-    .setColor(isTest ? TEST_COLOR : BLURPLE)
-    .setAuthor({
-      name: isTest ? `[TEST] ${guild.name}` : guild.name,
-      iconURL: guild.iconURL() ?? undefined,
-    })
-    .setTitle(`🎉  ${name}`)
-    .addFields(
-      { name: "📅  Date & Time", value: datetime, inline: false },
-      { name: "📝  Details",     value: description, inline: false },
+function buildSetupPanelComponents(state: AnnSetupState): ActionRowBuilder<ButtonBuilder>[] {
+  const uid = state.userId;
+  const isEvent = state.mode === "event";
+
+  const row1Buttons: ButtonBuilder[] = [
+    new ButtonBuilder()
+      .setCustomId(`an_fill:${uid}`)
+      .setLabel(state.filled ? "\u270F\uFE0F Edit Details" : "\uD83D\uDCDD Fill Details")
+      .setStyle(ButtonStyle.Primary),
+    new ButtonBuilder()
+      .setCustomId(`an_tag:${uid}`)
+      .setLabel(state.tagOn ? "\uD83D\uDFE2 Tag: ON" : "\uD83D\uDD34 Tag: OFF")
+      .setStyle(state.tagOn ? ButtonStyle.Success : ButtonStyle.Danger),
+  ];
+
+  // Color button only for ann mode
+  if (!isEvent) {
+    row1Buttons.push(
+      new ButtonBuilder()
+        .setCustomId(`an_tc_color_open:${uid}`)
+        .setLabel("\uD83C\uDFA8 Color")
+        .setStyle(ButtonStyle.Secondary)
+    );
+  }
+
+  row1Buttons.push(
+    new ButtonBuilder()
+      .setCustomId(`an_send:${uid}`)
+      .setLabel("\u2705 Send")
+      .setStyle(ButtonStyle.Success)
+      .setDisabled(!state.filled),
+    new ButtonBuilder()
+      .setCustomId(`an_cancel:${uid}`)
+      .setLabel("\u2715 Cancel")
+      .setStyle(ButtonStyle.Secondary),
+  );
+
+  return [new ActionRowBuilder<ButtonBuilder>().addComponents(...row1Buttons)];
+}
+
+function buildColorSubPanelEmbed(): EmbedBuilder {
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("\uD83C\uDFA8 Ann Colors")
+    .setDescription(
+      "Click a button to set the embed color for that section.\n" +
+      "Type a hex code, e.g. `FFE500`.\n\n" +
+      "**Title** \u2014 the separator/heading embed\n" +
+      "**Description** \u2014 the main body embed\n" +
+      "**Additional** \u2014 the extra bottom embed"
     )
-    .setTimestamp();
-
-  if (imageUrl && isValidUrl(imageUrl)) embed.setImage(imageUrl);
-  if (isTest) {
-    embed.setFooter({ text: "🧪 Test mode — not sent to @everyone" });
-  }
-  return embed;
+    .setFooter({ text: "Night Stars \u2022 Announcements" });
 }
 
-// ── Main registration ─────────────────────────────────────────────────────────
+function buildColorSubPanelComponents(uid: string): ActionRowBuilder<ButtonBuilder>[] {
+  const row1 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`an_tc_color_title:${uid}`).setLabel("Title Color").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`an_tc_color_desc:${uid}`).setLabel("Description Color").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`an_tc_color_add:${uid}`).setLabel("Additional Color").setStyle(ButtonStyle.Primary),
+  );
+  const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder().setCustomId(`an_tc_color_back:${uid}`).setLabel("\u2190 Back").setStyle(ButtonStyle.Secondary),
+  );
+  return [row1, row2];
+}
+
+// ── Embeds Builder ────────────────────────────────────────────────────────────
+function buildAnnouncementEmbeds(
+  title: string,
+  description: string,
+  additional: string,
+  titleColor: ColorResolvable,
+  descColor: ColorResolvable,
+  addColor: ColorResolvable,
+  imageUrl?: string,
+): EmbedBuilder[] {
+  const embeds: EmbedBuilder[] = [];
+
+  if (title) {
+    const isHeading = title.startsWith("## ");
+    const t = isHeading ? title.slice(3).trim() : title;
+    const line = isHeading ? `## ${toBold(t)}` : toBold(t);
+    embeds.push(new EmbedBuilder().setColor(titleColor).setDescription(line));
+  }
+
+  const bodyText = imageUrl ? `${toBold(description)}\n\u200b` : toBold(description);
+  const bodyEmbed = new EmbedBuilder().setColor(descColor).setDescription(bodyText);
+  if (imageUrl && isValidUrl(imageUrl)) bodyEmbed.setImage(imageUrl);
+  embeds.push(bodyEmbed);
+
+  if (additional) {
+    embeds.push(new EmbedBuilder().setColor(addColor).setDescription(toBold(additional)));
+  }
+
+  return embeds;
+}
+
+// ── Shared: open setup panel in channel ───────────────────────────────────────
+async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): Promise<void> {
+  const auth = await isAuthorized(message);
+  if (!auth.authorized) {
+    await tempReply(message, "\u274C You don\u2019t have permission to post announcements.");
+    return;
+  }
+
+  // For =ann command, only non-event-only users
+  if (mode === "ann" && auth.eventHosterOnly) {
+    await tempReply(message, "\u274C You can only post events. Use `=event` instead.");
+    return;
+  }
+
+  const allowed = await getAllowedChannels(message.guild!.id);
+  if (allowed.length && !allowed.includes(message.channelId)) {
+    await tempReply(message, `\u274C Announcements can only be posted from: ${allowed.map(id => `<#${id}>`).join(", ")}`);
+    return;
+  }
+
+  const attachmentImageUrl = message.attachments.first()?.url;
+  const state: AnnSetupState = {
+    userId: message.author.id,
+    guildId: message.guild!.id,
+    channelId: message.channelId,
+    panelChannelId: message.channelId,
+    title: "", description: "", additional: "", modalImageUrl: "",
+    tagOn: true,
+    mode,
+    lockedToEvent: mode === "event",
+    filled: false,
+    attachmentImageUrl,
+  };
+
+  await message.delete().catch(() => {});
+
+  const panel = await (message.channel as TextChannel).send({
+    embeds: [buildSetupPanelEmbed(state)],
+    components: buildSetupPanelComponents(state),
+  });
+
+  state.panelMessageId = panel.id;
+  annSetupState.set(state.userId, state);
+}
+
+// ── Module Registration ───────────────────────────────────────────────────────
 export function registerAnnouncementsModule(client: Client): void {
 
+  // ── Prefix commands: =ann and =event ──────────────────────────────────────
   client.on("messageCreate", async (message) => {
     if (!message.guild || message.author.bot) return;
     if (!isMainGuild(message.guild.id)) return;
 
-    const raw = message.content.trim();
+    const raw    = message.content.trim();
     const prefix = await getAnnPrefix(message.guild.id);
 
-    // ── {prefix}setannrole @role ───────────────────────────────────────
-    if (raw.startsWith(prefix + "setannrole")) {
-      if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-        await tempReply(message, "❌ Only admins can set the announcements role.");
-        return;
-      }
-      const match = raw.match(/<@&(\d+)>/);
-      if (!match) {
-        await tempReply(message, `❌ Please mention a role: \`${prefix}setannrole @Role\``);
-        return;
-      }
-      const roleId = match[1];
-      await db
-        .update(botConfigTable)
-        .set({ announcementsRoleId: roleId })
-        .where(eq(botConfigTable.guildId, message.guild.id));
-
-      await message.delete().catch(() => {});
-      const confirm = await message.channel.send(
-        `✅ Announcements role set to <@&${roleId}>. Members with this role can now use \`${prefix}ann\` and \`${prefix}event\`.`
-      );
-      setTimeout(() => confirm.delete().catch(() => {}), 8000);
+    if (raw === prefix + "ann" || raw.startsWith(prefix + "ann ")) {
+      await openAnnSetupInChannel(message, "ann");
       return;
     }
 
-    // ── {prefix}addannchannel #channel ────────────────────────────────
-    if (raw.startsWith(prefix + "addannchannel")) {
-      if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-        await tempReply(message, "❌ Only admins can configure announcement channels.");
-        return;
-      }
-      const match = raw.match(/<#(\d+)>/);
-      if (!match) {
-        await tempReply(message, `❌ Mention a channel: \`${prefix}addannchannel #channel\``);
-        return;
-      }
-      const channelId = match[1];
-      const current = await getAllowedChannels(message.guild.id);
-      if (current.includes(channelId)) {
-        await tempReply(message, `⚠️ <#${channelId}> is already in the list.`);
-        return;
-      }
-      if (current.length >= 4) {
-        await tempReply(message, `❌ You can only have up to 4 announcement channels. Remove one first with \`${prefix}removeannchannel\`.`);
-        return;
-      }
-      current.push(channelId);
-      await db
-        .update(botConfigTable)
-        .set({ announcementChannelsJson: JSON.stringify(current) })
-        .where(eq(botConfigTable.guildId, message.guild.id));
-
-      await message.delete().catch(() => {});
-      const confirm = await message.channel.send(
-        `✅ <#${channelId}> added. Announcement commands now work in: ${current.map(id => `<#${id}>`).join(", ")}`
-      );
-      setTimeout(() => confirm.delete().catch(() => {}), 10000);
-      return;
-    }
-
-    // ── {prefix}removeannchannel #channel ─────────────────────────────
-    if (raw.startsWith(prefix + "removeannchannel")) {
-      if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-        await tempReply(message, "❌ Only admins can configure announcement channels.");
-        return;
-      }
-      const match = raw.match(/<#(\d+)>/);
-      if (!match) {
-        await tempReply(message, `❌ Mention a channel: \`${prefix}removeannchannel #channel\``);
-        return;
-      }
-      const channelId = match[1];
-      const current = await getAllowedChannels(message.guild.id);
-      const updated = current.filter(id => id !== channelId);
-      if (updated.length === current.length) {
-        await tempReply(message, `⚠️ <#${channelId}> is not in the list.`);
-        return;
-      }
-      await db
-        .update(botConfigTable)
-        .set({ announcementChannelsJson: updated.length ? JSON.stringify(updated) : null })
-        .where(eq(botConfigTable.guildId, message.guild.id));
-
-      await message.delete().catch(() => {});
-      const confirm = await message.channel.send(
-        updated.length
-          ? `✅ <#${channelId}> removed. Remaining: ${updated.map(id => `<#${id}>`).join(", ")}`
-          : `✅ <#${channelId}> removed. Announcement commands now work in **any channel**.`
-      );
-      setTimeout(() => confirm.delete().catch(() => {}), 10000);
-      return;
-    }
-
-    // ── {prefix}annchannels ───────────────────────────────────────────
-    if (raw === prefix + "annchannels") {
-      if (!message.member?.permissions.has(PermissionFlagsBits.Administrator)) {
-        await tempReply(message, "❌ Only admins can view announcement channel config.");
-        return;
-      }
-      const current = await getAllowedChannels(message.guild.id);
-      const reply = current.length
-        ? `📢 Announcement commands are restricted to: ${current.map(id => `<#${id}>`).join(", ")}`
-        : `📢 No restriction set — announcement commands work in **any channel**.`;
-      await tempReply(message, reply, 12000);
-      return;
-    }
-
-    // ── {prefix}testann [text] ────────────────────────────────────────
-    if (raw.startsWith(prefix + "testann")) {
-      if (!await isAuthorized(message)) {
-        await tempReply(message, "❌ You don't have permission to test announcements.");
-        return;
-      }
-
-      const text = raw.slice((prefix + "testann").length).trim();
-      const attachment = message.attachments.first();
-      const imageUrl = attachment?.url;
-
-      if (!text && !imageUrl) {
-        await tempReply(message, `❌ Write your announcement after \`${prefix}testann\`, or attach an image.`);
-        return;
-      }
-
-      const resolvedText = await resolveEmojiCodes(text, message.guild);
-
-      const embed = buildAnnouncementEmbed(
-        { name: message.guild.name, iconURL: () => message.guild!.iconURL() },
-        resolvedText || " ",
-        imageUrl,
-        true
-      );
-
-      await message.reply({ embeds: [embed] });
-      return;
-    }
-
-    // ── {prefix}ann [text] ────────────────────────────────────────────
-    if (raw.startsWith(prefix + "ann")) {
-      if (!await isAuthorized(message)) {
-        await tempReply(message, "❌ You don't have permission to post announcements.");
-        return;
-      }
-
-      const allowed = await getAllowedChannels(message.guild.id);
-      if (allowed.length && !allowed.includes(message.channelId)) {
-        await tempReply(message, `❌ Announcements can only be posted from: ${allowed.map(id => `<#${id}>`).join(", ")}`);
-        return;
-      }
-
-      const text = raw.slice((prefix + "ann").length).trim();
-      const attachment = message.attachments.first();
-      const imageUrl = attachment?.url;
-
-      if (!text && !imageUrl) {
-        await tempReply(message, `❌ Write your announcement after \`${prefix}ann\`, or attach an image.`);
-        return;
-      }
-
-      const resolvedText = await resolveEmojiCodes(text, message.guild);
-
-      const channel = message.channel as TextChannel;
-      await message.delete().catch(() => {});
-
-      const embed = buildAnnouncementEmbed(
-        { name: message.guild.name, iconURL: () => message.guild!.iconURL() },
-        resolvedText || " ",
-        imageUrl
-      );
-
-      await channel.send({ content: "@everyone", embeds: [embed] });
-      return;
-    }
-
-    // ── {prefix}event ─────────────────────────────────────────────────
-    if (raw === prefix + "event") {
-      if (!await isAuthorized(message)) {
-        await tempReply(message, "❌ You don't have permission to post events.");
-        return;
-      }
-
-      const allowed = await getAllowedChannels(message.guild.id);
-      if (allowed.length && !allowed.includes(message.channelId)) {
-        await tempReply(message, `❌ Events can only be posted from: ${allowed.map(id => `<#${id}>`).join(", ")}`);
-        return;
-      }
-
-      const channel = message.channel as TextChannel;
-      pendingEventChannels.set(message.author.id, channel.id);
-      pendingEventTestMode.set(message.author.id, false);
-      await message.delete().catch(() => {});
-
-      const setupEmbed = new EmbedBuilder()
-        .setColor(BLURPLE)
-        .setTitle("🎉  Event Setup")
-        .setDescription(
-          "Click **Fill Event Details** to open the event form.\n" +
-          "Once you submit, the event will be posted here with `@everyone`.\n\n" +
-          "-# This message disappears when the event is posted or cancelled."
-        )
-        .setFooter({ text: `Requested by ${message.author.tag}` });
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`announce_fill_event:${message.author.id}`)
-          .setLabel("📋  Fill Event Details")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`announce_cancel_event:${message.author.id}`)
-          .setLabel("✕  Cancel")
-          .setStyle(ButtonStyle.Danger),
-      );
-
-      await channel.send({ embeds: [setupEmbed], components: [row] });
-      return;
-    }
-
-    // ── {prefix}testevent ─────────────────────────────────────────────
-    if (raw === prefix + "testevent") {
-      if (!await isAuthorized(message)) {
-        await tempReply(message, "❌ You don't have permission to test events.");
-        return;
-      }
-
-      const channel = message.channel as TextChannel;
-      pendingEventChannels.set(message.author.id, channel.id);
-      pendingEventTestMode.set(message.author.id, true);
-      await message.delete().catch(() => {});
-
-      const setupEmbed = new EmbedBuilder()
-        .setColor(TEST_COLOR)
-        .setTitle("🧪  Event Test Setup")
-        .setDescription(
-          "Click **Fill Event Details** to open the event form.\n" +
-          "The event will be posted **without @everyone** and marked as a test.\n\n" +
-          "-# This message disappears when the event is posted or cancelled."
-        )
-        .setFooter({ text: `Test by ${message.author.tag}` });
-
-      const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`announce_fill_event:${message.author.id}`)
-          .setLabel("📋  Fill Event Details")
-          .setStyle(ButtonStyle.Primary),
-        new ButtonBuilder()
-          .setCustomId(`announce_cancel_event:${message.author.id}`)
-          .setLabel("✕  Cancel")
-          .setStyle(ButtonStyle.Danger),
-      );
-
-      await channel.send({ embeds: [setupEmbed], components: [row] });
+    if (raw === prefix + "event" || raw.startsWith(prefix + "event ")) {
+      await openAnnSetupInChannel(message, "event");
       return;
     }
   });
 
-  // ── Button handler ────────────────────────────────────────────────────────
+  // ── Interactions ──────────────────────────────────────────────────────────
   client.on("interactionCreate", async (interaction) => {
-    if (!interaction.isButton() || !interaction.guild) return;
+    if (!interaction.guild) return;
+    if (!isMainGuild(interaction.guild.id)) return;
 
-    if (interaction.customId.startsWith("announce_fill_event:")) {
-      const userId = interaction.customId.slice("announce_fill_event:".length);
-      if (interaction.user.id !== userId) {
-        await interaction.reply({ content: "❌ This button is not for you.", ephemeral: true });
+    if (interaction.isButton()) {
+      const cid = interaction.customId;
+      if (
+        cid.startsWith("an_fill:")           ||
+        cid.startsWith("an_tag:")            ||
+        cid.startsWith("an_send:")           ||
+        cid.startsWith("an_cancel:")         ||
+        cid.startsWith("an_tc_color_open:")  ||
+        cid.startsWith("an_tc_color_title:") ||
+        cid.startsWith("an_tc_color_desc:")  ||
+        cid.startsWith("an_tc_color_add:")   ||
+        cid.startsWith("an_tc_color_back:")
+      ) {
+        await handleAnnButton(interaction as ButtonInteraction, client);
         return;
       }
-
-      const isTest = pendingEventTestMode.get(userId) ?? false;
-
-      const modal = new ModalBuilder()
-        .setCustomId(`announce_event_modal:${interaction.message.id}:${isTest ? "test" : "live"}`)
-        .setTitle(isTest ? "🧪  Test Event" : "🎉  New Event");
-
-      modal.addComponents(
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("event_name")
-            .setLabel("Event Name")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("e.g. Night Stars Tournament")
-            .setRequired(true)
-            .setMaxLength(100)
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("event_datetime")
-            .setLabel("Date & Time")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("e.g. Saturday 20 April at 8PM (GMT+1)")
-            .setRequired(true)
-            .setMaxLength(100)
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("event_description")
-            .setLabel("Description")
-            .setStyle(TextInputStyle.Paragraph)
-            .setPlaceholder("Event details, rules, prizes, how to join...")
-            .setRequired(true)
-            .setMaxLength(1000)
-        ),
-        new ActionRowBuilder<TextInputBuilder>().addComponents(
-          new TextInputBuilder()
-            .setCustomId("event_image")
-            .setLabel("Image URL (optional)")
-            .setStyle(TextInputStyle.Short)
-            .setPlaceholder("https://...")
-            .setRequired(false)
-            .setMaxLength(500)
-        ),
-      );
-
-      await interaction.showModal(modal);
-      return;
     }
 
-    if (interaction.customId.startsWith("announce_cancel_event:")) {
-      const userId = interaction.customId.slice("announce_cancel_event:".length);
-      if (interaction.user.id !== userId) {
-        await interaction.reply({ content: "❌ This button is not for you.", ephemeral: true });
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId.startsWith("an_modal:")) {
+        await handleAnnModal(interaction as ModalSubmitInteraction, client);
         return;
       }
-      pendingEventChannels.delete(userId);
-      pendingEventTestMode.delete(userId);
-      await interaction.message.delete().catch(() => {});
-      await interaction.reply({ content: "✅ Event setup cancelled.", ephemeral: true });
-      return;
+      if (interaction.customId.startsWith("an_tc_cmodal:")) {
+        await handleAnnColorModal(interaction as ModalSubmitInteraction);
+        return;
+      }
     }
   });
+}
 
-  // ── Modal submit ──────────────────────────────────────────────────────────
-  client.on("interactionCreate", async (interaction) => {
-    if (!interaction.isModalSubmit() || !interaction.guild) return;
-    if (!interaction.customId.startsWith("announce_event_modal:")) return;
+// ── Ann Button Handler ────────────────────────────────────────────────────────
+async function handleAnnButton(interaction: ButtonInteraction, client: Client): Promise<void> {
+  const { customId } = interaction;
+  const ownerId = customId.split(":")[1];
 
-    // customId format: announce_event_modal:<setupMessageId>:<live|test>
-    const parts = interaction.customId.slice("announce_event_modal:".length).split(":");
-    const setupMessageId = parts[0];
-    const isTest = parts[1] === "test";
+  if (interaction.user.id !== ownerId) {
+    await interaction.reply({ content: "\u274C This panel belongs to someone else.", ephemeral: true });
+    return;
+  }
 
-    const channelId = pendingEventChannels.get(interaction.user.id);
+  const state = annSetupState.get(ownerId);
+  if (!state) {
+    await interaction.reply({ content: "\u274C Session expired. Run the command again.", ephemeral: true });
+    return;
+  }
 
-    const rawEventName        = interaction.fields.getTextInputValue("event_name").trim();
-    const rawEventDatetime    = interaction.fields.getTextInputValue("event_datetime").trim();
-    const rawEventDescription = interaction.fields.getTextInputValue("event_description").trim();
-    const eventImage          = interaction.fields.getTextInputValue("event_image").trim() || undefined;
+  // Fill Details — show modal
+  if (customId.startsWith("an_fill:")) {
+    const modal = new ModalBuilder()
+      .setCustomId(`an_modal:${ownerId}`)
+      .setTitle(state.mode === "event" ? "Event Details" : "Announcement Details");
 
-    const eventName        = await resolveEmojiCodes(rawEventName,        interaction.guild);
-    const eventDatetime    = await resolveEmojiCodes(rawEventDatetime,    interaction.guild);
-    const eventDescription = await resolveEmojiCodes(rawEventDescription, interaction.guild);
-
-    // Delete the setup message
-    try {
-      const ch = channelId
-        ? await interaction.guild.channels.fetch(channelId) as TextChannel
-        : interaction.channel as TextChannel;
-      const setupMsg = await ch.messages.fetch(setupMessageId).catch(() => null);
-      await setupMsg?.delete().catch(() => {});
-    } catch {}
-
-    pendingEventChannels.delete(interaction.user.id);
-    pendingEventTestMode.delete(interaction.user.id);
-
-    const postChannel = channelId
-      ? (await interaction.guild.channels.fetch(channelId).catch(() => null) as TextChannel | null)
-      : (interaction.channel as TextChannel);
-
-    if (!postChannel) {
-      await interaction.reply({ content: "❌ Could not find the target channel.", ephemeral: true });
-      return;
-    }
-
-    const embed = buildEventEmbed(
-      { name: interaction.guild.name, iconURL: () => interaction.guild!.iconURL() },
-      eventName,
-      eventDatetime,
-      eventDescription,
-      eventImage,
-      isTest
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("an_title")
+          .setLabel("Title (optional \u2014 use ## for big heading)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setValue(state.title)
+          .setMaxLength(100)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("an_description")
+          .setLabel("Description")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setValue(state.description)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("an_additional")
+          .setLabel("Additional (optional \u2014 separate embed)")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(false)
+          .setValue(state.additional)
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("an_image")
+          .setLabel("Image URL (optional)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setValue(state.modalImageUrl)
+          .setPlaceholder("https://...")
+          .setMaxLength(500)
+      ),
     );
+    await interaction.showModal(modal);
+    return;
+  }
 
-    if (isTest) {
-      await postChannel.send({ embeds: [embed] });
-      await interaction.reply({ content: "🧪 Test event posted — no @everyone was sent.", ephemeral: true });
-    } else {
-      await postChannel.send({ content: "@everyone", embeds: [embed] });
-      await interaction.reply({ content: "✅ Event posted!", ephemeral: true });
+  // Tag toggle
+  if (customId.startsWith("an_tag:")) {
+    state.tagOn = !state.tagOn;
+    annSetupState.set(ownerId, state);
+    await interaction.update({
+      embeds: [buildSetupPanelEmbed(state)],
+      components: buildSetupPanelComponents(state),
+    });
+    return;
+  }
+
+  // Color panel — open
+  if (customId.startsWith("an_tc_color_open:")) {
+    await interaction.update({
+      embeds: [buildColorSubPanelEmbed()],
+      components: buildColorSubPanelComponents(ownerId),
+    });
+    return;
+  }
+
+  // Color panel — back to main panel
+  if (customId.startsWith("an_tc_color_back:")) {
+    await interaction.update({
+      embeds: [buildSetupPanelEmbed(state)],
+      components: buildSetupPanelComponents(state),
+    });
+    return;
+  }
+
+  // Color panel — open modal for a specific color type
+  if (
+    customId.startsWith("an_tc_color_title:") ||
+    customId.startsWith("an_tc_color_desc:")  ||
+    customId.startsWith("an_tc_color_add:")
+  ) {
+    const type = customId.startsWith("an_tc_color_title:") ? "ann_title"
+               : customId.startsWith("an_tc_color_desc:")  ? "ann_desc"
+               : "ann_add";
+    const labels: Record<string, string> = {
+      ann_title: "Ann Title Color (hex, e.g. FFE500)",
+      ann_desc:  "Ann Description Color (hex, e.g. FFE500)",
+      ann_add:   "Ann Additional Color (hex, e.g. FFE500)",
+    };
+    const modal = new ModalBuilder()
+      .setCustomId(`an_tc_cmodal:${type}:${ownerId}`)
+      .setTitle("Set Color");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("hex_color")
+          .setLabel(labels[type])
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setPlaceholder("FFE500")
+          .setMaxLength(7)
+      )
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  // Cancel
+  if (customId.startsWith("an_cancel:")) {
+    annSetupState.delete(ownerId);
+    await interaction.update({ content: "\u2716\uFE0F Cancelled.", embeds: [], components: [] });
+    setTimeout(async () => {
+      await interaction.deleteReply().catch(() => {});
+    }, 3000);
+    return;
+  }
+
+  // Send
+  if (customId.startsWith("an_send:")) {
+    if (!state.filled) {
+      await interaction.reply({ content: "\u274C Please fill in the details first.", ephemeral: true });
+      return;
     }
+
+    annSetupState.delete(ownerId);
+    await interaction.update({ content: "\u2705 Sending\u2026", embeds: [], components: [] });
+    setTimeout(async () => {
+      await interaction.deleteReply().catch(() => {});
+    }, 3000);
+
+    const guild = client.guilds.cache.get(state.guildId);
+    if (!guild) return;
+
+    const colors = await getAnnColors(state.guildId);
+    const isEvent = state.mode === "event";
+    const titleColor: ColorResolvable = isEvent ? colors.eventColor : colors.annTitleColor;
+    const descColor:  ColorResolvable = isEvent ? colors.eventColor : colors.annDescColor;
+    const addColor:   ColorResolvable = isEvent ? colors.eventColor : colors.annAddColor;
+
+    const titleResolved = state.title      ? await resolveEmojiCodes(state.title,       guild) : "";
+    const descResolved  =                    await resolveEmojiCodes(state.description,  guild);
+    const addResolved   = state.additional ? await resolveEmojiCodes(state.additional,   guild) : "";
+    const imageUrl = state.modalImageUrl || state.attachmentImageUrl;
+
+    const channel = await guild.channels.fetch(state.channelId).catch(() => null) as TextChannel | null;
+    if (!channel) return;
+
+    // Send @everyone / role tag FIRST if tag is on, delete after 5s
+    if (state.tagOn) {
+      const boldTitle = titleResolved ? toBold(titleResolved.replace(/^##\s*/, "").trim()) : "";
+      const pingContent = boldTitle ? `${boldTitle} @everyone` : "@everyone";
+      const ping = await channel.send({ content: pingContent });
+      setTimeout(() => ping.delete().catch(() => {}), 5000);
+    }
+
+    const embeds = buildAnnouncementEmbeds(
+      titleResolved, descResolved, addResolved,
+      titleColor, descColor, addColor, imageUrl
+    );
+    await channel.send({ embeds });
+
+    // Logs
+    const [cfg] = await db
+      .select({ annLogsChannelId: botConfigTable.annLogsChannelId })
+      .from(botConfigTable)
+      .where(eq(botConfigTable.guildId, state.guildId))
+      .limit(1);
+
+    if (cfg?.annLogsChannelId) {
+      const logsChannel = await guild.channels.fetch(cfg.annLogsChannelId).catch(() => null) as TextChannel | null;
+      if (logsChannel) {
+        const logEmbed = new EmbedBuilder()
+          .setColor(isEvent ? colors.eventColor : colors.annTitleColor)
+          .setTitle(isEvent ? "\uD83C\uDF89 Event Posted" : "\uD83D\uDCE3 Announcement Posted")
+          .addFields(
+            { name: "Posted by", value: `<@${ownerId}>`,         inline: true },
+            { name: "Channel",   value: `<#${state.channelId}>`, inline: true },
+            { name: "Type",      value: isEvent ? "Event" : "Announcement", inline: true },
+          )
+          .setTimestamp();
+        await logsChannel.send({ embeds: [logEmbed] }).catch(() => {});
+      }
+    }
+    return;
+  }
+}
+
+// ── Ann Modal Submit (fill details) ──────────────────────────────────────────
+async function handleAnnModal(interaction: ModalSubmitInteraction, _client: Client): Promise<void> {
+  const ownerId = interaction.customId.split(":")[1];
+  const state = annSetupState.get(ownerId);
+  if (!state) { await interaction.reply({ content: "\u274C Session expired.", ephemeral: true }); return; }
+
+  state.title         = interaction.fields.getTextInputValue("an_title").trim();
+  state.description   = interaction.fields.getTextInputValue("an_description").trim();
+  state.additional    = interaction.fields.getTextInputValue("an_additional").trim();
+  state.modalImageUrl = interaction.fields.getTextInputValue("an_image").trim();
+  state.filled        = !!state.description;
+  annSetupState.set(ownerId, state);
+
+  // Update the panel message in the guild channel
+  if (state.panelMessageId && state.panelChannelId) {
+    try {
+      const guild = interaction.guild;
+      if (guild) {
+        const panelChannel = await guild.channels.fetch(state.panelChannelId).catch(() => null) as TextChannel | null;
+        if (panelChannel) {
+          const panelMsg = await panelChannel.messages.fetch(state.panelMessageId).catch(() => null);
+          if (panelMsg) {
+            await panelMsg.edit({
+              embeds: [buildSetupPanelEmbed(state)],
+              components: buildSetupPanelComponents(state),
+            });
+          }
+        }
+      }
+    } catch {}
+  }
+
+  await interaction.reply({ content: "\u2705 Details saved!", ephemeral: true });
+}
+
+// ── Ann Color Modal Submit (text command color change) ────────────────────────
+async function handleAnnColorModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const parts = interaction.customId.split(":");
+  const type    = parts[1]; // ann_title | ann_desc | ann_add
+  const ownerId = parts[2];
+
+  const raw = interaction.fields.getTextInputValue("hex_color").replace("#", "").trim().toUpperCase();
+  const num = parseInt(raw, 16);
+  if (isNaN(num) || raw.length < 3 || raw.length > 6) {
+    await interaction.reply({
+      content: "\u274C Invalid hex color. Use something like `FFE500` or `#FFE500`.",
+      ephemeral: true,
+    });
+    return;
+  }
+
+  const guildId = interaction.guild!.id;
+  const updateData =
+    type === "ann_title" ? { annTitleColor: raw, updatedAt: new Date() } :
+    type === "ann_desc"  ? { annDescColor:  raw, updatedAt: new Date() } :
+                           { annAddColor:   raw, updatedAt: new Date() };
+  const insertData =
+    type === "ann_title" ? { guildId, annTitleColor: raw } :
+    type === "ann_desc"  ? { guildId, annDescColor:  raw } :
+                           { guildId, annAddColor:   raw };
+
+  const existing = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
+  if (existing.length) {
+    await db.update(botConfigTable).set(updateData).where(eq(botConfigTable.guildId, guildId));
+  } else {
+    await db.insert(botConfigTable).values(insertData);
+  }
+
+  const labels: Record<string, string> = {
+    ann_title: "Ann \u2014 Title",
+    ann_desc:  "Ann \u2014 Description",
+    ann_add:   "Ann \u2014 Additional",
+  };
+
+  await interaction.reply({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(num)
+        .setDescription(`\u2705 **${labels[type] ?? type}** color set to \`#${raw}\``)
+        .setFooter({ text: "Night Stars \u2022 Announcements" }),
+    ],
+    ephemeral: true,
   });
+
+  // Return panel to main view after color saved (if session still active)
+  const state = annSetupState.get(ownerId);
+  if (state?.panelMessageId && state?.panelChannelId) {
+    try {
+      const panelChannel = await interaction.guild!.channels.fetch(state.panelChannelId).catch(() => null) as TextChannel | null;
+      if (panelChannel) {
+        const panelMsg = await panelChannel.messages.fetch(state.panelMessageId).catch(() => null);
+        if (panelMsg) {
+          await panelMsg.edit({
+            embeds: [buildSetupPanelEmbed(state)],
+            components: buildSetupPanelComponents(state),
+          });
+        }
+      }
+    } catch {}
+  }
 }

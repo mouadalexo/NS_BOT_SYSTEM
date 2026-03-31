@@ -50,151 +50,73 @@ import {
   handleCtpTagModalSubmit,
 } from "./ctpTemp.js";
 import {
-  openStaffPanel,
-  handleStaffPanelSelect,
-  handleStaffPanelSave,
-  handleStaffPanelReset,
-} from "./staff.js";
+  openGeneralSetupPanel,
+  handleGeneralStaffRoleSelect,
+  handleGeneralBlockedChSelect,
+  handleGeneralPanelSave,
+  handleGeneralPanelReset,
+} from "./general.js";
+import {
+  openAnnPanel,
+  handleAnnAnnRoleSelect,
+  handleAnnEventRoleSelect,
+  handleAnnLogsChannelSelect,
+  handleAnnPanelSave,
+  handleAnnPanelReset,
+  openAnnColorPanel,
+  openAnnColorModal,
+  handleAnnColorModalSubmit,
+  handleAnnColorBack,
+} from "./ann.js";
 
 function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
   return new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("📋 Night Stars Bot — All Commands")
+    .setTitle("\uD83D\uDCCB Night Stars Bot \u2014 All Commands")
     .addFields(
       {
         name: "📣 Announcements (staff with announce role or admin)",
         value: [
-          `\`${ann}ann <text>\` — Post a gold announcement embed with @everyone`,
-          `\`${ann}testann <text>\` — Preview announcement without pinging anyone`,
-          `\`${ann}event\` — Open the event form and post a blurple event embed with @everyone`,
-          `\`${ann}testevent\` — Preview the full event flow without pinging anyone`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "⚙️ Announcement Setup (admin only)",
-        value: [
-          `\`${ann}setannrole @Role\` — Set which role can use announce/event commands`,
-          `\`${ann}addannchannel #ch\` — Add a channel where announce commands work (up to 4)`,
-          `\`${ann}removeannchannel #ch\` — Remove a channel from the list`,
-          `\`${ann}annchannels\` — Show currently allowed announcement channels`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🎙️ PVS — Private Voice System (room owners)",
-        value: [
-          `\`${pvs}key @user\` — Give/remove access to your room`,
-          `\`${pvs}pull @user\` — Pull someone from the waiting room`,
-          `\`${pvs}see keys\` — List members with access`,
-          `\`${pvs}clear keys\` — Remove all access`,
-          `\`${pvs}name <name>\` — Rename your room`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🎙️ PVS — Staff (PVS Manager role)",
-        value: [
-          `\`${mgr}pv @member\` — Create a Premium Voice room`,
-          `\`${mgr}pv delete @member\` — Remove a Premium Voice room`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🎮 CTP — Category Game Tagging",
-        value: [
-          `\`${ctp}tag\` — Ping the game role for your voice channel (auto-detected by CTP category)`,
-          "Each game has its own cooldown — the bot will tell you if one is active",
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🎮 CTP — Onetap Game Tagging",
-        value: [
-          `\`${ctp}<gamename>\` — Ping a game role while in the onetap temp voice category`,
-          `Example: \`${ctp}amongus\` pings Among Us players`,
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "⚙️ Setup & Prefix",
-        value: [
-          "`/setup pvs` — Configure the Private Voice System",
-          "`/setup ctp-category` — Configure CTP for category-based game tagging",
-          "`/setup ctp-onetap` — Configure CTP onetap temp voice tagging",
-          "`/setup staff` — Set the staff role",
-          "`/prefix` — View and edit all system prefixes (admin only)",
+          `${ann}ann` + " — Post an announcement (panel opens in channel)",
+          `${ann}event` + " — Post an event",
+          "💡 Use `## Title` to add a heading embed",
+          "💡 Use `;emoji_name` in text to insert a server emoji",
         ].join("\n"),
         inline: false,
       },
     )
-    .setFooter({ text: "Night Stars • NS Bot" });
-}
-
-function buildAnnouncementsHelpEmbed() {
-  return new EmbedBuilder()
-    .setColor(0x5000ff)
-    .setTitle("📣 Announcements & Events — Commands")
-    .addFields(
-      {
-        name: "Live Commands",
-        value: [
-          "`!announce <text>` — Posts a gold embed with `@everyone`. You can attach an image too.",
-          "`!event` — Opens an event setup form. Fill in name, date, description, and optional image. Posts with `@everyone`.",
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "🧪 Test Commands (same flow, no @everyone)",
-        value: [
-          "`!testannounce <text>` — Sends the announcement embed as a preview (no @everyone, orange color).",
-          "`!testevent` — Full event form flow but posts without @everyone and shows a [TEST] label.",
-        ].join("\n"),
-        inline: false,
-      },
-      {
-        name: "⚙️ Channel & Role Setup (admin only)",
-        value: [
-          "`!setannouncerole @Role` — Grant a role access to announce/event commands.",
-          "`!addannouncechannel #ch` — Restrict announce/event to specific channels (up to 4). If none set, any channel works.",
-          "`!removeannouncechannel #ch` — Remove a channel from the allowed list.",
-          "`!announcechannels` — View current allowed channels.",
-        ].join("\n"),
-        inline: false,
-      },
-    )
-    .setFooter({ text: "Night Stars • Announcements" });
+    .setFooter({ text: "Night Stars \u2022 NS Bot" });
 }
 
 function buildPvsInfoEmbed() {
   return new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("🎙️ PVS — Private Voice System Commands")
+    .setTitle("\uD83C\uDFA7 PVS \u2014 Private Voice System Commands")
     .setDescription("Commands for private voice room owners:")
     .addFields(
-      { name: "`=key @user`", value: "Give or remove a member's access to your room.", inline: false },
+      { name: "`=key @user`", value: "Give or remove a member\u2019s access to your room.", inline: false },
       { name: "`=pull @user`", value: "Pull a member from the waiting room into your room.", inline: false },
       { name: "`=see keys`", value: "List all members who have access to your room.", inline: false },
-      { name: "`=clear keys`", value: "Remove all keys — your room becomes fully private.", inline: false },
+      { name: "`=clear keys`", value: "Remove all keys \u2014 your room becomes fully private.", inline: false },
       { name: "`=name NewName`", value: "Rename your voice room.", inline: false },
       { name: "\u200B", value: "**Staff Command** (PVS Manager Role required)", inline: false },
       { name: "`+pv @member`", value: "Create a permanent private voice room for a member.", inline: false },
-      { name: "`+pv delete @member`", value: "Remove a member's Premium Voice room.", inline: false },
+      { name: "`+pv delete @member`", value: "Remove a member\u2019s Premium Voice room.", inline: false },
     )
-    .setFooter({ text: "Night Stars • PVS" });
+    .setFooter({ text: "Night Stars \u2022 PVS" });
 }
 
 function buildCtpInfoEmbed() {
   return new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("🎮 CTP — Call to Play Commands")
+    .setTitle("\uD83C\uDFAE CTP \u2014 Call to Play Commands")
     .setDescription("Commands for calling players to your game:")
     .addFields(
       {
         name: "`-tag`",
         value:
           "Ping the game role for your current voice channel.\n" +
-          "The bot detects which game you're in automatically based on the category.\n" +
+          "The bot detects which game you\u2019re in automatically based on the category.\n" +
           "Just join a game voice channel and type `-tag`.",
         inline: false,
       },
@@ -204,7 +126,7 @@ function buildCtpInfoEmbed() {
         inline: false,
       },
     )
-    .setFooter({ text: "Night Stars • CTP" });
+    .setFooter({ text: "Night Stars \u2022 CTP" });
 }
 
 export async function registerPanelCommands(client: Client) {
@@ -215,18 +137,17 @@ export async function registerPanelCommands(client: Client) {
     .setName("setup")
     .setDescription("Configure Night Stars bot systems")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addSubcommand((sub) =>
-      sub.setName("pvs").setDescription("Set up the Private Voice System (PVS)")
-    )
-    .addSubcommand((sub) =>
-      sub.setName("ctp-category").setDescription("Set up CTP for games with their own category")
-    )
-    .addSubcommand((sub) =>
-      sub.setName("ctp-onetap").setDescription("Set up CTP Onetap — temp voice game tagging")
-    )
-    .addSubcommand((sub) =>
-      sub.setName("staff").setDescription("Set the staff role — grants access to all bot systems")
-    )
+    .addSubcommand((sub) => sub.setName("pvs").setDescription("Set up the Private Voice System (PVS)"))
+    .addSubcommand((sub) => sub.setName("ctp-category").setDescription("Set up CTP for games with their own category"))
+    .addSubcommand((sub) => sub.setName("ctp-onetap").setDescription("Set up CTP Onetap \u2014 temp voice game tagging"))
+    .addSubcommand((sub) => sub.setName("staff").setDescription("Set the staff role \u2014 grants access to all bot systems"))
+    .toJSON();
+
+  const annCommand = new SlashCommandBuilder()
+    .setName("ann")
+    .setDescription("Announcement system")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .addSubcommand((sub) => sub.setName("setup").setDescription("Configure the announcements system (tag role, embed colors)"))
     .toJSON();
 
   const helpCommand = new SlashCommandBuilder()
@@ -250,7 +171,7 @@ export async function registerPanelCommands(client: Client) {
   const registerForGuild = async (guildId: string, guildName: string) => {
     try {
       await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
-        body: [setupCommand, helpCommand, pingCommand, prefixCommand],
+        body: [setupCommand, annCommand, generalCommand, helpCommand, pingCommand, prefixCommand],
       });
       console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
@@ -274,13 +195,17 @@ export async function registerPanelCommands(client: Client) {
       const name = interaction.commandName;
       if (name === "setup") {
         await handleSetupCommand(interaction as ChatInputCommandInteraction);
+      } else if (name === "ann") {
+        await handleAnnCommand(interaction as ChatInputCommandInteraction);
+      } else if (name === "general") {
+        await handleGeneralCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
         await interaction.reply({
           embeds: [
             new EmbedBuilder()
               .setColor(0x5000ff)
               .setDescription(`Latency: **${Math.round(interaction.client.ws.ping)}ms**`)
-              .setFooter({ text: "Night Stars • NS Bot" }),
+              .setFooter({ text: "Night Stars \u2022 NS Bot" }),
           ],
           ephemeral: true,
         });
@@ -298,8 +223,9 @@ export async function registerPanelCommands(client: Client) {
         "pp_save", "pp_reset",
         "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
         "cp_open_details", "cp_save", "cp_reset",
-        "sp_save", "sp_reset",
+        "gp_save", "gp_reset",
         "pfx_edit",
+        "ap_save", "ap_reset", "ap_color_open", "ap_color_ann_title", "ap_color_ann_desc", "ap_color_ann_add", "ap_color_event", "ap_back",
       ];
       if (panelIds.includes(interaction.customId) || interaction.customId.startsWith("ct_")) {
         await handleButtonInteraction(interaction as ButtonInteraction);
@@ -327,18 +253,27 @@ export async function registerPanelCommands(client: Client) {
     }
 
     if (interaction.isModalSubmit()) {
-      if (interaction.customId === "pfx_modal") {
-        try { await handlePrefixModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Prefix modal error:", err); }
-      } else if (interaction.customId === "cp_details_modal") {
+      const { customId } = interaction;
+      if (customId === "pfx_modal") {
+        await handlePrefixModalSubmit(interaction as ModalSubmitInteraction);
+      } else if (customId.startsWith("cp_") || customId.startsWith("ct_")) {
         try { await handleCtpDetailsModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP modal error:", err); }
-      } else if (interaction.customId.startsWith("ct_")) {
-        try { await handleCtpTagModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP temp modal error:", err); }
+        try { await handleCtpTagModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("CTP tag modal error:", err); }
+      } else if (customId === "ap_modal_ann_title") {
+        await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "ann_title");
+      } else if (customId === "ap_modal_ann_desc") {
+        await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "ann_desc");
+      } else if (customId === "ap_modal_ann_add") {
+        await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "ann_add");
+      } else if (customId === "ap_modal_event") {
+        await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "event");
       }
+      return;
     }
   });
 }
 
-async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
+async function handleGeneralCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
       embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("❌ You need **Administrator** permission to use this.")],
@@ -346,19 +281,44 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
     });
     return;
   }
-
   await interaction.deferReply({ ephemeral: true });
-
   const sub = interaction.options.getSubcommand();
+  if (sub === "setup") {
+    await openGeneralSetupPanel(interaction as unknown as ButtonInteraction);
+  }
+}
 
+async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("\u274C You need **Administrator** permission to use this.")],
+      ephemeral: true,
+    });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const sub = interaction.options.getSubcommand();
   if (sub === "pvs") {
     await openPvsPanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "ctp-category") {
     await openCtpManagePanel(interaction as unknown as ButtonInteraction);
   } else if (sub === "ctp-onetap") {
     await openCtpTagPanel(interaction as unknown as ButtonInteraction);
-  } else if (sub === "staff") {
-    await openStaffPanel(interaction as unknown as ButtonInteraction);
+  }
+}
+
+async function handleAnnCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("\u274C You need **Administrator** permission to use this.")],
+      ephemeral: true,
+    });
+    return;
+  }
+  await interaction.deferReply({ ephemeral: true });
+  const sub = interaction.options.getSubcommand();
+  if (sub === "setup") {
+    await openAnnPanel(interaction as unknown as ButtonInteraction);
   }
 }
 
@@ -387,12 +347,28 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleCtpPanelSave(interaction);
     } else if (customId === "cp_reset") {
       await handleCtpPanelReset(interaction);
-    } else if (customId === "sp_save") {
-      await handleStaffPanelSave(interaction);
-    } else if (customId === "sp_reset") {
-      await handleStaffPanelReset(interaction);
+    } else if (customId === "gp_save") {
+      await handleGeneralPanelSave(interaction);
+    } else if (customId === "gp_reset") {
+      await handleGeneralPanelReset(interaction);
     } else if (customId === "pfx_edit") {
       await handlePrefixEditButton(interaction);
+    } else if (customId === "ap_save") {
+      await handleAnnPanelSave(interaction);
+    } else if (customId === "ap_reset") {
+      await handleAnnPanelReset(interaction);
+    } else if (customId === "ap_color_open") {
+      await openAnnColorPanel(interaction);
+    } else if (customId === "ap_color_ann_title") {
+      await openAnnColorModal(interaction, "ann_title");
+    } else if (customId === "ap_color_ann_desc") {
+      await openAnnColorModal(interaction, "ann_desc");
+    } else if (customId === "ap_color_ann_add") {
+      await openAnnColorModal(interaction, "ann_add");
+    } else if (customId === "ap_color_event") {
+      await openAnnColorModal(interaction, "event");
+    } else if (customId === "ap_back") {
+      await handleAnnColorBack(interaction);
     }
   } catch (err) {
     console.error("Panel button error:", err);
@@ -406,10 +382,14 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handlePvsPanelSelect(interaction);
     } else if (customId.startsWith("cp_")) {
       await handleCtpPanelSelect(interaction);
-    } else if (customId.startsWith("sp_")) {
-      await handleStaffPanelSelect(interaction);
+    } else if (customId === "gp_staff_role") {
+      await handleGeneralStaffRoleSelect(interaction);
     } else if (customId.startsWith("ct_")) {
       await handleCtpTagRoleSelect(interaction);
+    } else if (customId === "ap_ann_role") {
+      await handleAnnAnnRoleSelect(interaction);
+    } else if (customId === "ap_event_role") {
+      await handleAnnEventRoleSelect(interaction);
     }
   } catch (err) {
     console.error("Panel role select error:", err);
@@ -425,6 +405,10 @@ async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInte
       await handleCtpPanelSelect(interaction);
     } else if (customId.startsWith("ct_")) {
       await handleCtpTagChannelSelect(interaction);
+    } else if (customId === "ap_logs_channel") {
+      await handleAnnLogsChannelSelect(interaction);
+    } else if (customId === "gp_blocked_ch") {
+      await handleGeneralBlockedChSelect(interaction);
     }
   } catch (err) {
     console.error("Panel channel select error:", err);
@@ -446,15 +430,15 @@ async function openPrefixPanel(interaction: ChatInputCommandInteraction) {
   const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
   const embed = new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("⚙️ System Prefixes")
+    .setTitle("\u2699\uFE0F System Prefixes")
     .setDescription("These prefixes define how members trigger each bot system. Click **Edit Prefixes** to change them.")
     .addFields(
-      { name: "🎙️ PVS Prefix", value: `\`${pvs}\``, inline: true },
-      { name: "🎙️ Manager Prefix", value: `\`${mgr}\``, inline: true },
-      { name: "🎮 CTP Prefix", value: `\`${ctp}\``, inline: true },
-      { name: "📣 Announcements Prefix", value: `\`${ann}\``, inline: true },
+      { name: "\uD83C\uDFA7 PVS Prefix", value: `\`${pvs}\``, inline: true },
+      { name: "\uD83C\uDFA7 Manager Prefix", value: `\`${mgr}\``, inline: true },
+      { name: "\uD83C\uDFAE CTP Prefix", value: `\`${ctp}\``, inline: true },
+      { name: "\uD83D\uDCE3 Announcements Prefix", value: `\`${ann}\``, inline: true },
     )
-    .setFooter({ text: "Night Stars • NS Bot" });
+    .setFooter({ text: "Night Stars \u2022 NS Bot" });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("pfx_edit").setLabel("Edit Prefixes").setStyle(ButtonStyle.Primary),
   );
@@ -491,22 +475,20 @@ async function handlePrefixModalSubmit(interaction: ModalSubmitInteraction) {
   const mgr = interaction.fields.getTextInputValue("pfx_mgr").trim();
   const ctp = interaction.fields.getTextInputValue("pfx_ctp").trim();
   const ann = interaction.fields.getTextInputValue("pfx_ann").trim();
-
   await db
     .update(botConfigTable)
     .set({ pvsPrefix: pvs, managerPrefix: mgr, ctpPrefix: ctp, annPrefix: ann })
     .where(eq(botConfigTable.guildId, guildId));
-
   const embed = new EmbedBuilder()
     .setColor(0x00c851)
-    .setTitle("✅ Prefixes Updated")
+    .setTitle("\u2705 Prefixes Updated")
     .addFields(
-      { name: "🎙️ PVS Prefix", value: `\`${pvs}\``, inline: true },
-      { name: "🎙️ Manager Prefix", value: `\`${mgr}\``, inline: true },
-      { name: "🎮 CTP Prefix", value: `\`${ctp}\``, inline: true },
-      { name: "📣 Announcements Prefix", value: `\`${ann}\``, inline: true },
+      { name: "\uD83C\uDFA7 PVS Prefix", value: `\`${pvs}\``, inline: true },
+      { name: "\uD83C\uDFA7 Manager Prefix", value: `\`${mgr}\``, inline: true },
+      { name: "\uD83C\uDFAE CTP Prefix", value: `\`${ctp}\``, inline: true },
+      { name: "\uD83D\uDCE3 Announcements Prefix", value: `\`${ann}\``, inline: true },
     )
-    .setFooter({ text: "Night Stars • NS Bot" });
+    .setFooter({ text: "Night Stars \u2022 NS Bot" });
   const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("pfx_edit").setLabel("Edit Again").setStyle(ButtonStyle.Secondary),
   );

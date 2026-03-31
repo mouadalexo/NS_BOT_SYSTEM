@@ -14,8 +14,14 @@ import { pvsVoicesTable, pvsKeysTable, botConfigTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-const PVS_PREFIX = "=";
-const MANAGER_PREFIX = "+";
+async function getGuildPrefix(guildId: string): Promise<string> {
+  const [cfg] = await db
+    .select({ pvsPrefix: botConfigTable.pvsPrefix })
+    .from(botConfigTable)
+    .where(eq(botConfigTable.guildId, guildId))
+    .limit(1);
+  return cfg?.pvsPrefix ?? "=";
+}
 
 const OWNER_PERMS = [
   PermissionsBitField.Flags.ViewChannel,
@@ -109,6 +115,48 @@ async function pushWaitingRoomToBottom(guild: Guild, categoryId: string, waiting
   ).catch(() => {});
 }
 
+
+async function getMemberHelpEmbed(guildId: string) {
+  const rows = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
+  const row = rows[0];
+  const pvs = row?.pvsPrefix ?? "=";
+  const ctp = row?.ctpPrefix ?? "-";
+
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("\u{1F4CB} Night Stars Bot \u2014 Commands")
+    .addFields(
+      {
+        name: "\u{1F399}\uFE0F PVS \u2014 Private Voice System (room owners)",
+        value: [
+          "`" + pvs + "key @user` \u2014 Give/remove access to your room",
+          "`" + pvs + "pull @user` \u2014 Pull someone from the waiting room",
+          "`" + pvs + "see keys` \u2014 List members with access",
+          "`" + pvs + "clear keys` \u2014 Remove all access",
+          "`" + pvs + "name <name>` \u2014 Rename your room",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "\u{1F3AE} CTP \u2014 Category Game Tagging",
+        value: [
+          "`" + ctp + "tag` \u2014 Ping the game role for your voice channel (auto-detected by CTP category)",
+          "Each game has its own cooldown \u2014 the bot will tell you if one is active",
+        ].join("\n"),
+        inline: false,
+      },
+      {
+        name: "\u{1F3AE} CTP \u2014 Onetap Game Tagging",
+        value: [
+          "`" + ctp + "<gamename>` \u2014 Ping a game role while in the onetap temp voice category",
+          "Example: `" + ctp + "amongus` pings Among Us players",
+        ].join("\n"),
+        inline: false,
+      },
+    )
+    .setFooter({ text: "Night Stars \u2022 NS Bot" });
+}
+
 export function registerPVSModule(client: Client) {
   client.once("clientReady", async () => {
     try {
@@ -137,21 +185,16 @@ export function registerPVSModule(client: Client) {
       const member = message.member;
       if (!member) return;
 
-      if (message.content.startsWith(MANAGER_PREFIX)) {
-        const content = message.content.slice(MANAGER_PREFIX.length).trim();
-        if (content.toLowerCase().startsWith("pv delete ")) {
-          await handleManagerDeletePVS(message, member, content.slice(10).trim());
-        } else if (content.toLowerCase().startsWith("pv ")) {
-          await handleManagerCreatePVS(message, member, content.slice(3).trim());
-        }
-        return;
-      }
+      const prefix = await getGuildPrefix(message.guild.id);
+      if (!message.content.startsWith(prefix)) return;
 
-      if (!message.content.startsWith(PVS_PREFIX)) return;
+      const content = message.content.slice(prefix.length).trim();
 
-      const content = message.content.slice(PVS_PREFIX.length).trim();
-
-      if (content.toLowerCase().startsWith("key ")) {
+      if (content.toLowerCase().startsWith("pv delete ")) {
+        await handleManagerDeletePVS(message, member, content.slice(10).trim());
+      } else if (content.toLowerCase().startsWith("pv ")) {
+        await handleManagerCreatePVS(message, member, content.slice(3).trim());
+      } else if (content.toLowerCase().startsWith("key ")) {
         await handleKey(message, member, content.slice(4).trim());
       } else if (content.toLowerCase() === "clear keys") {
         await handleClearKeys(message, member);
@@ -167,6 +210,11 @@ export function registerPVSModule(client: Client) {
         await handleTextLock(message, member, false);
       } else if (content.toLowerCase().startsWith("kick ")) {
         await handleKick(message, member, content.slice(5).trim());
+      } else if (content.toLowerCase() === "help") {
+        try {
+          const embed = await getMemberHelpEmbed(message.guild!.id);
+          const sent = await message.channel.send({ embeds: [embed] });
+        } catch {}
       }
     } catch (err) {
       console.error("[PVS] Unhandled error in messageCreate:", err);

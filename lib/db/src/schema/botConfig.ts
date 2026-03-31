@@ -20,6 +20,15 @@ export const botConfigTable = pgTable("bot_config", {
   managerPrefix: text("manager_prefix").default("+"),
   ctpPrefix: text("ctp_prefix").default("-"),
   annPrefix: text("ann_prefix").default("!"),
+  annColor: text("ann_color"),
+  anColor: text("an_color"),
+  eventColor: text("event_color"),
+  annTitleColor: text("ann_title_color"),
+  annDescColor: text("ann_desc_color"),
+  annAddColor: text("ann_add_color"),
+  eventHosterRoleId: text("event_hoster_role_id"),
+  annLogsChannelId: text("ann_logs_channel_id"),
+  blockedChannelsJson: text("blocked_channels_json"),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 
