@@ -23,6 +23,8 @@ export const botConfigTable = pgTable("bot_config", {
   annColor: text("ann_color"),
   anColor: text("an_color"),
   eventColor: text("event_color"),
+  eventDescColor: text("event_desc_color"),
+  eventAddColor: text("event_add_color"),
   annTitleColor: text("ann_title_color"),
   annDescColor: text("ann_desc_color"),
   annAddColor: text("ann_add_color"),
