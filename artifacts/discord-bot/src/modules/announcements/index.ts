@@ -339,6 +339,88 @@ async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): P
   // Launcher stays until user dismisses it manually
 }
 
+// ── =an inline announcement helpers ──────────────────────────────────────────
+async function resolveTags(text: string, guild: Guild): Promise<string> {
+  const tagPattern = /\[([^\]]+)\]/g;
+  const matches: { match: string; name: string; index: number }[] = [];
+  let m: RegExpExecArray | null;
+  while ((m = tagPattern.exec(text)) !== null) {
+    matches.push({ match: m[0], name: m[1], index: m.index });
+  }
+  if (matches.length === 0) return text;
+
+  try { await guild.roles.fetch(); } catch {}
+
+  let result = text;
+  for (let i = matches.length - 1; i >= 0; i--) {
+    const { match, name, index } = matches[i];
+    let resolved = match;
+    const lower = name.toLowerCase();
+
+    if (lower === "everyone") {
+      resolved = "@everyone";
+    } else if (lower === "here") {
+      resolved = "@here";
+    } else {
+      const role = guild.roles.cache.find((r) => r.name.toLowerCase() === lower);
+      if (role) {
+        resolved = `<@&${role.id}>`;
+      } else {
+        try { await guild.members.fetch({ query: name, limit: 5 }); } catch {}
+        const member = guild.members.cache.find(
+          (mem) =>
+            mem.user.username.toLowerCase() === lower ||
+            mem.displayName.toLowerCase() === lower ||
+            (mem.user.globalName?.toLowerCase() ?? "") === lower,
+        );
+        if (member) resolved = `<@${member.id}>`;
+      }
+    }
+    result = result.slice(0, index) + resolved + result.slice(index + match.length);
+  }
+  return result;
+}
+
+async function handleInlineAnn(message: Message, prefix: string): Promise<void> {
+  const auth = await isAuthorized(message);
+  if (!auth.authorized) {
+    await tempReply(message, "\u274C You don\u2019t have permission to post announcements.");
+    return;
+  }
+  if (auth.eventHosterOnly) {
+    await tempReply(message, "\u274C You can only post events. Use `=event` instead.");
+    return;
+  }
+
+  const allowed = await getAllowedChannels(message.guild!.id);
+  if (allowed.length && !allowed.includes(message.channelId)) {
+    await tempReply(
+      message,
+      `\u274C Announcements can only be posted from: ${allowed.map((id) => `<#${id}>`).join(", ")}`,
+    );
+    return;
+  }
+
+  const raw = message.content.trim();
+  const body = raw.slice((prefix + "an ").length).trim();
+  if (!body) {
+    await tempReply(message, `\u274C Usage: \`${prefix}an Your message [RoleName] ;emoji\``);
+    return;
+  }
+
+  const guild = message.guild!;
+  let resolved = await resolveTags(body, guild);
+  resolved = await resolveEmojiCodes(resolved, guild);
+
+  // Delete the trigger message as fast as possible
+  await message.delete().catch(() => {});
+
+  await (message.channel as TextChannel).send({
+    content: resolved,
+    allowedMentions: { parse: ["everyone", "roles", "users"] },
+  });
+}
+
 // ── Module Registration ───────────────────────────────────────────────────────
 export function registerAnnouncementsModule(client: Client): void {
 
