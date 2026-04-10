@@ -78,7 +78,9 @@ function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
         name: "\uD83D\uDCE3 Announcements (Ann Role or Admin)",
         value: [
           `\`${ann}ann\`` + " \u2014 Post an announcement",
-`\`${ann}event\`` + " \u2014 Post an event",
+          `\`${ann}event\`` + " \u2014 Post an event",
+          `\`${ann}an <message>\`` + " \u2014 Quick inline announcement \u2014 deletes your message and posts it clean",
+          "\uD83D\uDCA1 In `=an`: use `[RoleName]` to ping a role, `[username]` to mention a member, `[everyone]` for @everyone",
           "\uD83D\uDCA1 Use `## Title` for a heading embed",
           "\uD83D\uDCA1 Use `;emoji_name` to insert a server emoji",
         ].join("\n"),
