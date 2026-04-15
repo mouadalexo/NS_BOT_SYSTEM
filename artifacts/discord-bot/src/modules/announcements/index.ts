@@ -357,19 +357,22 @@ async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): P
 
   await message.delete().catch(() => {});
 
-  try {
-    const panel = await message.author.send({
-      embeds: [buildSetupPanelEmbed(state)],
-      components: buildSetupPanelComponents(state),
-    });
-    state.panelChannelId = panel.channelId;
-    state.panelMessageId = panel.id;
-    annSetupState.set(state.userId, state);
-  } catch {
-    annSetupState.delete(state.userId);
-    const fallback = await (message.channel as TextChannel).send("❌ I couldn't DM you. Please enable DMs from server members and try again.");
-    setTimeout(() => fallback.delete().catch(() => {}), 8000);
-  }
+  annSetupState.set(state.userId, state);
+
+  const launcher = await (message.channel as TextChannel).send({
+    content: "-# Setup panel ready.",
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder()
+          .setCustomId(`an_open:${state.userId}`)
+          .setLabel("📋 Open Setup Panel")
+          .setStyle(ButtonStyle.Primary)
+      ),
+    ],
+  });
+
+  state.panelMessageId = launcher.id;
+  annSetupState.set(state.userId, state);
 }
 
 // ── =an inline announcement helpers ──────────────────────────────────────────
@@ -547,6 +550,7 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
       embeds: [buildSetupPanelEmbed(state)],
       components: buildSetupPanelComponents(state),
     });
+    await interaction.message.delete().catch(() => {});
     state.panelInteraction = interaction;
     annSetupState.set(ownerId, state);
     return;
