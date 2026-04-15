@@ -264,6 +264,14 @@ async function editStoredSetupPanel(client: Client, state: AnnSetupState): Promi
   }).catch(() => {});
 }
 
+async function deleteSetupLauncher(interaction: ButtonInteraction, state: AnnSetupState): Promise<void> {
+  await interaction.message.delete().catch(async () => {
+    if (!state.panelMessageId) return;
+    const channelMessages = (interaction.channel as TextChannel | null)?.messages;
+    await channelMessages?.delete(state.panelMessageId).catch(() => {});
+  });
+}
+
 function buildColorSubPanelEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x5000ff)
@@ -545,12 +553,12 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
 
   // Open: reply ephemerally, store interaction for later updates
   if (customId.startsWith("an_open:")) {
+    await deleteSetupLauncher(interaction, state);
     await interaction.reply({
       ephemeral: true,
       embeds: [buildSetupPanelEmbed(state)],
       components: buildSetupPanelComponents(state),
     });
-    await interaction.message.delete().catch(() => {});
     state.panelInteraction = interaction;
     annSetupState.set(ownerId, state);
     return;
