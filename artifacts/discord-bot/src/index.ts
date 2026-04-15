@@ -7,12 +7,52 @@ import {
   ActivityType,
 } from "discord.js";
 import { createServer } from "http";
+import { pool } from "@workspace/db";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
 import { registerStatsModule } from "./modules/stats/index.js";
 import { registerAnnouncementsModule } from "./modules/announcements/index.js";
 import { registerPanelCommands } from "./panels/index.js";
+
+const BOT_INSTANCE_LOCK_KEY = 489215731;
+let lockClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+
+async function acquireBotInstanceLock(): Promise<boolean> {
+  lockClient = await pool.connect();
+  const result = await lockClient.query<{ acquired: boolean }>(
+    "select pg_try_advisory_lock($1) as acquired",
+    [BOT_INSTANCE_LOCK_KEY],
+  );
+  if (!result.rows[0]?.acquired) {
+    lockClient.release();
+    lockClient = undefined;
+    return false;
+  }
+  return true;
+}
+
+async function releaseBotInstanceLock(): Promise<void> {
+  if (!lockClient) return;
+  try {
+    await lockClient.query("select pg_advisory_unlock($1)", [BOT_INSTANCE_LOCK_KEY]);
+  } catch {}
+  lockClient.release();
+  lockClient = undefined;
+}
+
+async function shutdown(exitCode = 0): Promise<void> {
+  await releaseBotInstanceLock();
+  process.exit(exitCode);
+}
+
+process.once("SIGINT", () => {
+  void shutdown(0);
+});
+
+process.once("SIGTERM", () => {
+  void shutdown(0);
+});
 
 process.on("unhandledRejection", (reason) => {
   console.error("[Bot] Unhandled promise rejection:", reason);
@@ -54,13 +94,22 @@ const tokenDots = (token?.match(/\./g) ?? []).length;
 console.log(`[Bot] DISCORD_TOKEN present: ${!!token}`);
 console.log(`[Bot] DISCORD_TOKEN length: ${tokenLength} (expected ~70+)`);
 console.log(`[Bot] DISCORD_TOKEN dots: ${tokenDots} (expected 2)`);
-console.log(`[Bot] DISCORD_TOKEN prefix: ${token ? token.slice(0, 10) + "..." : "none"}`);
 console.log(`[Bot] NODE_ENV: ${process.env.NODE_ENV}`);
 console.log(`[Bot] DATABASE_URL present: ${!!process.env.DATABASE_URL}`);
 
 if (!token) {
   console.error("[Bot] ERROR: DISCORD_TOKEN is not set. Bot cannot connect.");
 } else {
+  void startBot(token);
+}
+
+async function startBot(token: string): Promise<void> {
+  const acquired = await acquireBotInstanceLock();
+  if (!acquired) {
+    console.error("[Bot] Another NS bot instance is already active. Exiting to prevent duplicate sends.");
+    process.exit(0);
+  }
+
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,

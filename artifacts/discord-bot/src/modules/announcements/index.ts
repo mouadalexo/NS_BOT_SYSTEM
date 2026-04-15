@@ -229,6 +229,41 @@ function buildSetupPanelComponents(state: AnnSetupState): ActionRowBuilder<Butto
   return rows;
 }
 
+function getAnnouncementOwnerId(customId: string): string | undefined {
+  const parts = customId.split(":");
+  return customId.startsWith("an_tc_cmodal:") ? parts[2] : parts[1];
+}
+
+function isAnnouncementCustomId(customId: string): boolean {
+  return (
+    customId.startsWith("an_open:")           ||
+    customId.startsWith("an_fill:")           ||
+    customId.startsWith("an_tag:")            ||
+    customId.startsWith("an_send:")           ||
+    customId.startsWith("an_cancel:")         ||
+    customId.startsWith("an_tc_color_open:")  ||
+    customId.startsWith("an_tc_color_title:") ||
+    customId.startsWith("an_tc_color_desc:")  ||
+    customId.startsWith("an_tc_color_add:")   ||
+    customId.startsWith("an_tc_color_back:")  ||
+    customId.startsWith("an_preview:")        ||
+    customId.startsWith("an_modal:")          ||
+    customId.startsWith("an_tc_cmodal:")
+  );
+}
+
+async function editStoredSetupPanel(client: Client, state: AnnSetupState): Promise<void> {
+  if (!state.panelMessageId) return;
+  const channel = await client.channels.fetch(state.panelChannelId).catch(() => null);
+  const messages = (channel as { messages?: { fetch: (id: string) => Promise<Message> } } | null)?.messages;
+  if (!messages) return;
+  const panel = await messages.fetch(state.panelMessageId).catch(() => null);
+  await panel?.edit({
+    embeds: [buildSetupPanelEmbed(state)],
+    components: buildSetupPanelComponents(state),
+  }).catch(() => {});
+}
+
 function buildColorSubPanelEmbed(): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(0x5000ff)
@@ -322,21 +357,19 @@ async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): P
 
   await message.delete().catch(() => {});
 
-  annSetupState.set(state.userId, state);
-
-  const launcher = await (message.channel as TextChannel).send({
-    content: `-# <@${state.userId}>, your setup panel is ready.`,
-    components: [
-      new ActionRowBuilder<ButtonBuilder>().addComponents(
-        new ButtonBuilder()
-          .setCustomId(`an_open:${state.userId}`)
-          .setLabel("📋 Open Setup Panel")
-          .setStyle(ButtonStyle.Primary)
-      ),
-    ],
-  });
-
-  // Launcher stays until user dismisses it manually
+  try {
+    const panel = await message.author.send({
+      embeds: [buildSetupPanelEmbed(state)],
+      components: buildSetupPanelComponents(state),
+    });
+    state.panelChannelId = panel.channelId;
+    state.panelMessageId = panel.id;
+    annSetupState.set(state.userId, state);
+  } catch {
+    annSetupState.delete(state.userId);
+    const fallback = await (message.channel as TextChannel).send("❌ I couldn't DM you. Please enable DMs from server members and try again.");
+    setTimeout(() => fallback.delete().catch(() => {}), 8000);
+  }
 }
 
 // ── =an inline announcement helpers ──────────────────────────────────────────
@@ -450,8 +483,13 @@ export function registerAnnouncementsModule(client: Client): void {
 
   // ── Interactions ──────────────────────────────────────────────────────────
   client.on("interactionCreate", async (interaction) => {
-    if (!interaction.guild) return;
-    if (!isMainGuild(interaction.guild.id)) return;
+    const customId = interaction.isButton() || interaction.isModalSubmit() ? interaction.customId : "";
+    if (!customId || !isAnnouncementCustomId(customId)) return;
+    const ownerId = getAnnouncementOwnerId(customId);
+    const state = ownerId ? annSetupState.get(ownerId) : undefined;
+    const guildId = interaction.guild?.id ?? state?.guildId;
+    if (!guildId) return;
+    if (!isMainGuild(guildId)) return;
 
     if (interaction.isButton()) {
       const cid = interaction.customId;
@@ -479,7 +517,7 @@ export function registerAnnouncementsModule(client: Client): void {
         return;
       }
       if (interaction.customId.startsWith("an_tc_cmodal:")) {
-        await handleAnnColorModal(interaction as ModalSubmitInteraction);
+        await handleAnnColorModal(interaction as ModalSubmitInteraction, client);
         return;
       }
     }
@@ -730,7 +768,7 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
 }
 
 // ── Ann Modal Submit (fill details) ──────────────────────────────────────────
-async function handleAnnModal(interaction: ModalSubmitInteraction, _client: Client): Promise<void> {
+async function handleAnnModal(interaction: ModalSubmitInteraction, client: Client): Promise<void> {
   const ownerId = interaction.customId.split(":")[1];
   const state = annSetupState.get(ownerId);
   if (!state) { await interaction.reply({ content: "\u274C Session expired.", ephemeral: true }); return; }
@@ -742,7 +780,6 @@ async function handleAnnModal(interaction: ModalSubmitInteraction, _client: Clie
   state.filled        = !!state.description;
   annSetupState.set(ownerId, state);
 
-  // Update the ephemeral panel via stored interaction
   if (state.panelInteraction) {
     try {
       await state.panelInteraction.editReply({
@@ -750,13 +787,15 @@ async function handleAnnModal(interaction: ModalSubmitInteraction, _client: Clie
         components: buildSetupPanelComponents(state),
       });
     } catch {}
+  } else {
+    await editStoredSetupPanel(client, state);
   }
 
   await interaction.reply({ content: "\u2705 Details saved!", ephemeral: true });
 }
 
 // ── Ann Color Modal Submit (text command color change) ────────────────────────
-async function handleAnnColorModal(interaction: ModalSubmitInteraction): Promise<void> {
+async function handleAnnColorModal(interaction: ModalSubmitInteraction, client: Client): Promise<void> {
   const parts = interaction.customId.split(":");
   const type    = parts[1]; // ann_title | ann_desc | ann_add
   const ownerId = parts[2];
@@ -806,7 +845,6 @@ async function handleAnnColorModal(interaction: ModalSubmitInteraction): Promise
     ephemeral: true,
   });
 
-  // Return panel to main view after color saved
   const state = annSetupState.get(ownerId);
   if (state?.panelInteraction) {
     try {
@@ -815,5 +853,7 @@ async function handleAnnColorModal(interaction: ModalSubmitInteraction): Promise
         components: buildSetupPanelComponents(state),
       });
     } catch {}
+  } else if (state) {
+    await editStoredSetupPanel(client, state);
   }
 }
