@@ -402,6 +402,9 @@ async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): P
 
   state.panelMessageId = launcher.id;
   annSetupState.set(state.userId, state);
+  setTimeout(() => {
+    launcher.delete().catch(() => {});
+  }, 60_000);
 }
 
 // ── =an inline announcement helpers ──────────────────────────────────────────
