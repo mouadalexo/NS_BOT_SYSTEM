@@ -38,7 +38,7 @@ function buildGeneralPanelEmbed(state: GeneralPanelState) {
       `**Staff Role** \u2014 ${state.staffRoleId ? `<@&${state.staffRoleId}>` : "not set"}\n` +
       "\u2514 Bypasses all permission checks across PVS and CTP\n\n" +
       `**Help Roles** \u2014 ${helpList}\n` +
-      "\u2514 Only these roles can use \`/help\` (Admins always bypass)\n\n" +
+      "\u2514 Only these roles can use `/help` (Admins and Staff always bypass)\n\n" +
       `**Blocked Channels** \u2014 ${blockedList}\n` +
       "\u2514 NS Bot text commands will not work in these channels"
     )
@@ -112,8 +112,8 @@ export async function openGeneralSetupPanel(interaction: ButtonInteraction) {
   }
 
   let helpRoles: string[] = [];
-  if ((row as any)?.helpRoleIdsJson) {
-    try { helpRoles = JSON.parse((row as any).helpRoleIdsJson); } catch {}
+  if (row?.helpRoleIdsJson) {
+    try { helpRoles = JSON.parse(row.helpRoleIdsJson); } catch {}
   }
 
   const state: GeneralPanelState = {
@@ -176,7 +176,7 @@ export async function handleGeneralPanelSave(interaction: ButtonInteraction) {
   const updateData: Record<string, unknown> = { updatedAt: new Date() };
   if (state.staffRoleId) updateData.staffRoleId = state.staffRoleId;
   updateData.blockedChannelsJson = JSON.stringify(state.blockedChannels);
-  (updateData as any).helpRoleIdsJson = JSON.stringify(state.helpRoleIds);
+  updateData.helpRoleIdsJson = JSON.stringify(state.helpRoleIds);
 
   const existing = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
   if (existing.length) {
@@ -186,6 +186,7 @@ export async function handleGeneralPanelSave(interaction: ButtonInteraction) {
       guildId,
       staffRoleId: state.staffRoleId,
       blockedChannelsJson: JSON.stringify(state.blockedChannels),
+      helpRoleIdsJson: JSON.stringify(state.helpRoleIds),
     });
   }
 
@@ -243,6 +244,15 @@ export async function getHelpRoleIds(guildId: string): Promise<string[]> {
     .from(botConfigTable)
     .where(eq(botConfigTable.guildId, guildId))
     .limit(1);
-  if (!(cfg as any)?.helpRoleIdsJson) return [];
-  try { return JSON.parse((cfg as any).helpRoleIdsJson) as string[]; } catch { return []; }
+  if (!cfg?.helpRoleIdsJson) return [];
+  try { return JSON.parse(cfg.helpRoleIdsJson) as string[]; } catch { return []; }
+}
+
+export async function getStaffRoleId(guildId: string): Promise<string | null> {
+  const [cfg] = await db
+    .select({ staffRoleId: botConfigTable.staffRoleId })
+    .from(botConfigTable)
+    .where(eq(botConfigTable.guildId, guildId))
+    .limit(1);
+  return cfg?.staffRoleId ?? null;
 }
