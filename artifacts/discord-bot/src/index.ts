@@ -18,6 +18,7 @@ import { registerPanelCommands } from "./panels/index.js";
 
 const BOT_INSTANCE_LOCK_KEY = 489215731;
 let lockClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+let lockKeepaliveTimer: NodeJS.Timeout | undefined;
 
 async function ensureRuntimeSchema(): Promise<void> {
   await pool.query(`
@@ -51,10 +52,31 @@ async function acquireBotInstanceLock(): Promise<boolean> {
     lockClient = undefined;
     return false;
   }
+  lockKeepaliveTimer = setInterval(async () => {
+    if (!lockClient) {
+      clearInterval(lockKeepaliveTimer);
+      lockKeepaliveTimer = undefined;
+      return;
+    }
+    try {
+      await lockClient.query("SELECT 1");
+    } catch (err) {
+      console.error("[Bot] Lock keepalive failed — DB connection dropped:", err);
+      clearInterval(lockKeepaliveTimer);
+      lockKeepaliveTimer = undefined;
+      lockClient = undefined;
+      console.error("[Bot] Exiting so PM2 can restart with a fresh connection.");
+      process.exit(1);
+    }
+  }, 30_000);
   return true;
 }
 
 async function releaseBotInstanceLock(): Promise<void> {
+  if (lockKeepaliveTimer) {
+    clearInterval(lockKeepaliveTimer);
+    lockKeepaliveTimer = undefined;
+  }
   if (!lockClient) return;
   try {
     await lockClient.query("select pg_advisory_unlock($1)", [BOT_INSTANCE_LOCK_KEY]);
@@ -82,6 +104,7 @@ process.on("unhandledRejection", (reason) => {
 
 process.on("uncaughtException", (err) => {
   console.error("[Bot] Uncaught exception:", err);
+  process.exit(1);
 });
 
 const port = process.env.PORT ? parseInt(process.env.PORT) : 3000;
@@ -161,7 +184,7 @@ async function startBot(token: string): Promise<void> {
     } catch (err) {
       console.warn("[Bot] Could not set presence:", err);
     }
-    
+
     try {
       await registerPanelCommands(client);
       console.log("[Bot] Commands registered successfully");
