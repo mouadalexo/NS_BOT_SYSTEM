@@ -20,7 +20,11 @@ const BOT_INSTANCE_LOCK_KEY = 489215731;
 let lockClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
 
 async function ensureRuntimeSchema(): Promise<void> {
-  await pool.query("alter table bot_config add column if not exists member_role_id text");
+  await pool.query(`
+    alter table bot_config add column if not exists member_role_id text;
+    alter table bot_config add column if not exists jail_hammer_role_id text;
+    alter table bot_config add column if not exists jail_logs_channel_id text;
+  `);
 }
 
 async function acquireBotInstanceLock(): Promise<boolean> {
