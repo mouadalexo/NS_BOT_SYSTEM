@@ -17,7 +17,7 @@ import { isMainGuild } from "../../utils/guildFilter.js";
 
 const JAIL_PREFIX = "=";
 const CONFIRMATION_TTL = 3000;
-const CLEANUP_DAYS = 1;
+const CLEANUP_HOURS = 10;
 
 async function getConfig(guildId: string) {
   const rows = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
@@ -101,42 +101,45 @@ function displayName(member: GuildMember): string {
   return member.displayName || member.user.username;
 }
 
-async function deleteRecentMessages(message: Message, targetId: string) {
-  const cutoff = Date.now() - CLEANUP_DAYS * 24 * 60 * 60 * 1000;
-  let deleted = 0;
+async function deleteInChannel(
+  channel: TextChannel | NewsChannel,
+  targetId: string,
+  cutoff: number,
+  guild: import("discord.js").Guild,
+) {
+  const permissions = channel.permissionsFor(guild.members.me!);
+  if (
+    !permissions?.has(PermissionsBitField.Flags.ViewChannel) ||
+    !permissions.has(PermissionsBitField.Flags.ManageMessages)
+  ) return;
 
-  await message.guild!.channels.fetch().catch(() => null);
+  let before: string | undefined;
 
-  const channels = message.guild!.channels.cache.filter(
-    (channel): channel is TextChannel | NewsChannel =>
-      channel.type === ChannelType.GuildText || channel.type === ChannelType.GuildAnnouncement,
-  );
+  for (let page = 0; page < 3; page += 1) {
+    const fetched = await channel.messages.fetch({ limit: 100, before }).catch(() => null);
+    if (!fetched?.size) break;
 
-  for (const channel of channels.values()) {
-    const permissions = channel.permissionsFor(message.guild!.members.me!);
-    if (!permissions?.has(PermissionsBitField.Flags.ViewChannel) || !permissions.has(PermissionsBitField.Flags.ManageMessages)) {
-      continue;
-    }
+    const targets = fetched.filter((msg) => msg.author.id === targetId && msg.createdTimestamp >= cutoff);
+    if (targets.size) await channel.bulkDelete(targets, true).catch(() => {});
 
-    let before: string | undefined;
-
-    for (let page = 0; page < 25; page += 1) {
-      const fetched = await channel.messages.fetch({ limit: 100, before }).catch(() => null);
-      if (!fetched?.size) break;
-
-      const recentTargetMessages = fetched.filter((msg) => msg.author.id === targetId && msg.createdTimestamp >= cutoff);
-      if (recentTargetMessages.size) {
-        const removed = await channel.bulkDelete(recentTargetMessages, true).catch(() => null);
-        deleted += removed?.size ?? 0;
-      }
-
-      const oldest = fetched.last();
-      if (!oldest || oldest.createdTimestamp < cutoff) break;
-      before = oldest.id;
-    }
+    const oldest = fetched.last();
+    if (!oldest || oldest.createdTimestamp < cutoff) break;
+    before = oldest.id;
   }
+}
 
-  return deleted;
+function deleteRecentMessages(message: Message, targetId: string) {
+  const cutoff = Date.now() - CLEANUP_HOURS * 60 * 60 * 1000;
+
+  message.guild!.channels.fetch().catch(() => null).then(() => {
+    const channels = [...message.guild!.channels.cache
+      .filter((ch): ch is TextChannel | NewsChannel =>
+        ch.type === ChannelType.GuildText || ch.type === ChannelType.GuildAnnouncement,
+      )
+      .values()];
+
+    Promise.all(channels.map((ch) => deleteInChannel(ch, targetId, cutoff, message.guild!))).catch(() => {});
+  });
 }
 
 export function registerJailModule(client: Client) {
@@ -215,7 +218,6 @@ async function handleJail(
     return;
   }
 
-  // Check if already jailed
   if (target.roles.cache.has(jailRoleId)) {
     await sendTemporary(message, errorEmbed(`**${displayName(target)}** is already jailed.`));
     return;
@@ -260,7 +262,6 @@ async function handleJail(
   if (removableRoles.size) await target.roles.remove(removableRoles, `Jailed by ${moderator.user.tag}: ${reason}`);
   await target.roles.add(jailRoleId, `Jailed by ${moderator.user.tag}: ${reason}`);
 
-  // Store case in DB
   const [caseRecord] = await db
     .insert(jailCasesTable)
     .values({
@@ -274,40 +275,25 @@ async function handleJail(
     .returning({ id: jailCasesTable.id })
     .catch(() => [null]);
 
-  // Send confirmation immediately — deletes original command message and auto-deletes after 3 seconds
+  // Confirmation fires immediately — deletes command message, auto-deletes after 3s
   await sendTemporary(message, simpleEmbed(0x5000ff, "This user was jailed."));
 
-  // Delete recent messages in background so confirmation is not blocked
+  // Log fires immediately — no waiting for message deletion
   const caseRef = caseRecord ? ` • Case #${caseRecord.id}` : "";
-  deleteRecentMessages(message, target.id)
-    .then((deleted) => {
-      sendLog(
-        message,
-        logsChannelId,
-        buildEmbed(
-          0x5000ff,
-          `🔨 Jail Log${caseRef}`,
-          `**User**: ${displayName(target)}\n` +
-          `**Hammer**: ${displayName(moderator)}\n` +
-          `**Reason**: ${reason}\n` +
-          `**Deleted messages**: ${deleted}`,
-        ),
-      ).catch(() => {});
-    })
-    .catch(() => {
-      sendLog(
-        message,
-        logsChannelId,
-        buildEmbed(
-          0x5000ff,
-          `🔨 Jail Log${caseRef}`,
-          `**User**: ${displayName(target)}\n` +
-          `**Hammer**: ${displayName(moderator)}\n` +
-          `**Reason**: ${reason}\n` +
-          `**Deleted messages**: 0`,
-        ),
-      ).catch(() => {});
-    });
+  await sendLog(
+    message,
+    logsChannelId,
+    buildEmbed(
+      0x5000ff,
+      `🔨 Jail Log${caseRef}`,
+      `**User**: ${displayName(target)}\n` +
+      `**Hammer**: ${displayName(moderator)}\n` +
+      `**Reason**: ${reason}`,
+    ),
+  );
+
+  // Message deletion runs fully in background — fire and forget
+  deleteRecentMessages(message, target.id);
 }
 
 async function handleUnjail(
@@ -330,7 +316,6 @@ async function handleUnjail(
     return;
   }
 
-  // Check if not jailed
   if (!target.roles.cache.has(jailRoleId)) {
     await sendTemporary(message, errorEmbed(`**${displayName(target)}** is not jailed.`));
     return;
@@ -361,10 +346,8 @@ async function handleUnjail(
   await target.roles.remove(jailRoleId, `Unjailed by ${moderator.user.tag}`);
   await target.roles.add(memberRoleId, `Unjailed by ${moderator.user.tag}`);
 
-  // Simple confirmation — auto-deletes after 3 seconds
   await sendTemporary(message, simpleEmbed(0x00c851, "This user was unjailed."));
 
-  // Clean log — no IDs
   await sendLog(
     message,
     logsChannelId,
@@ -403,7 +386,6 @@ async function handleCase(message: Message, moderator: GuildMember, args: string
     return;
   }
 
-  // Fetch most recent jail case for this user in this guild
   const rows = await db
     .select()
     .from(jailCasesTable)
