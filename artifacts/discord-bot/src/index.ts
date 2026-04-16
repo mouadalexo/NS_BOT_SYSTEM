@@ -13,10 +13,15 @@ import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
 import { registerStatsModule } from "./modules/stats/index.js";
 import { registerAnnouncementsModule } from "./modules/announcements/index.js";
+import { registerJailModule } from "./modules/jail/index.js";
 import { registerPanelCommands } from "./panels/index.js";
 
 const BOT_INSTANCE_LOCK_KEY = 489215731;
 let lockClient: Awaited<ReturnType<typeof pool.connect>> | undefined;
+
+async function ensureRuntimeSchema(): Promise<void> {
+  await pool.query("alter table bot_config add column if not exists member_role_id text");
+}
 
 async function acquireBotInstanceLock(): Promise<boolean> {
   lockClient = await pool.connect();
@@ -110,6 +115,8 @@ async function startBot(token: string): Promise<void> {
     process.exit(0);
   }
 
+  await ensureRuntimeSchema();
+
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
@@ -183,5 +190,6 @@ async function startBot(token: string): Promise<void> {
     registerCTPModule(client);
     registerStatsModule(client);
     registerAnnouncementsModule(client);
+    registerJailModule(client);
   });
 }
