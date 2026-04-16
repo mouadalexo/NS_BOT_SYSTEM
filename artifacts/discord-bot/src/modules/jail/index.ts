@@ -12,7 +12,7 @@ import type {
 } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable, jailCasesTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
 const JAIL_PREFIX = "=";
@@ -363,42 +363,47 @@ async function handleUnjail(
 }
 
 async function handleCase(message: Message, moderator: GuildMember, args: string) {
-  const caseNumber = parseInt(args.trim(), 10);
-  if (isNaN(caseNumber) || caseNumber < 1) {
-    await sendTemporary(message, errorEmbed("Usage: `=case <number>`"));
-    return;
-  }
-
   const config = await getConfig(message.guild!.id);
   const hammerRoleIds = getHammerRoleIds(config);
   if (!hasJailPermission(moderator, hammerRoleIds)) {
-    await sendTemporary(message, errorEmbed("You need one of the configured **Hammer Roles** to view cases."));
+    await sendTemporary(message, errorEmbed("You need one of the configured **Hammer Roles** to use this command."));
     return;
   }
 
+  const targetId = extractMentionedMemberId(args);
+  if (!targetId) {
+    await sendTemporary(message, errorEmbed("Usage: `=case @user`"));
+    return;
+  }
+
+  const target = await message.guild!.members.fetch(targetId).catch(() => null);
+  if (!target) {
+    await sendTemporary(message, errorEmbed("Member not found."));
+    return;
+  }
+
+  const jailRoleId = config?.jailRoleId;
+  if (!jailRoleId || !target.roles.cache.has(jailRoleId)) {
+    await sendTemporary(message, simpleEmbed(0xff4d4d, `**${displayName(target)}** is not jailed.`));
+    return;
+  }
+
+  // Fetch most recent jail case for this user in this guild
   const rows = await db
     .select()
     .from(jailCasesTable)
-    .where(and(eq(jailCasesTable.id, caseNumber), eq(jailCasesTable.guildId, message.guild!.id)))
+    .where(and(eq(jailCasesTable.targetId, target.id), eq(jailCasesTable.guildId, message.guild!.id)))
+    .orderBy(desc(jailCasesTable.id))
     .limit(1);
 
   const record = rows[0];
   if (!record) {
-    await sendTemporary(message, errorEmbed(`Case #${caseNumber} not found.`));
+    await sendTemporary(message, simpleEmbed(0x5000ff, `The jail reason of **${displayName(target)}** is unknown (no record found).`));
     return;
   }
 
-  const timeStr = `<t:${Math.floor(record.jailedAt.getTime() / 1000)}:F>`;
-
   await sendTemporary(
     message,
-    buildEmbed(
-      0x5000ff,
-      `📋 Case #${record.id}`,
-      `**Jailed user**: ${record.targetTag}\n` +
-      `**Hammer**: ${record.moderatorTag}\n` +
-      `**Reason**: ${record.reason}\n` +
-      `**Time**: ${timeStr}`,
-    ),
+    simpleEmbed(0x5000ff, `The jail reason of **${displayName(target)}** is: ${record.reason}`),
   );
 }
