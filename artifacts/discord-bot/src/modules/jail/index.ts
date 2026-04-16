@@ -58,10 +58,21 @@ function extractReason(input: string) {
   return input.replace(/^<@!?\d+>\s*/, "").replace(/^\d+\s*/, "").trim();
 }
 
-function hasJailPermission(member: GuildMember, hammerRoleId?: string | null) {
+function getHammerRoleIds(config: Awaited<ReturnType<typeof getConfig>>) {
+  if (!config) return [];
+  if (config.jailHammerRoleIdsJson) {
+    try {
+      const parsed = JSON.parse(config.jailHammerRoleIdsJson);
+      if (Array.isArray(parsed)) return parsed.filter((id): id is string => typeof id === "string" && id.length > 0);
+    } catch {}
+  }
+  return config.jailHammerRoleId ? [config.jailHammerRoleId] : [];
+}
+
+function hasJailPermission(member: GuildMember, hammerRoleIds: string[]) {
   return (
     member.permissions.has(PermissionsBitField.Flags.Administrator) ||
-    !!(hammerRoleId && member.roles.cache.has(hammerRoleId))
+    hammerRoleIds.some((roleId) => member.roles.cache.has(roleId))
   );
 }
 
@@ -137,13 +148,14 @@ export function registerJailModule(client: Client) {
       if (!member) return;
 
       const config = await getConfig(message.guild.id);
-      if (!config?.jailRoleId || !config?.memberRoleId || !config?.jailHammerRoleId) {
+      const hammerRoleIds = getHammerRoleIds(config);
+      if (!config?.jailRoleId || !config?.memberRoleId || !hammerRoleIds.length) {
         await sendTemporary(message, errorEmbed("The jail system is not configured yet. Use `/setup-jail` first."));
         return;
       }
 
-      if (!hasJailPermission(member, config.jailHammerRoleId)) {
-        await sendTemporary(message, errorEmbed("You need the configured **Hammer Role** to use jail commands."));
+      if (!hasJailPermission(member, hammerRoleIds)) {
+        await sendTemporary(message, errorEmbed("You need one of the configured **Hammer Roles** to use jail commands."));
         return;
       }
 
