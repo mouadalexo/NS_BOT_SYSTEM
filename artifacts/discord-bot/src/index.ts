@@ -26,6 +26,18 @@ async function ensureRuntimeSchema(): Promise<void> {
     alter table bot_config add column if not exists jail_hammer_role_ids_json text;
     alter table bot_config add column if not exists jail_logs_channel_id text;
   `);
+  await pool.query(`
+    create table if not exists jail_cases (
+      id serial primary key,
+      guild_id text not null,
+      target_id text not null,
+      target_tag text not null,
+      moderator_id text not null,
+      moderator_tag text not null,
+      reason text not null,
+      jailed_at timestamp default now() not null
+    );
+  `);
 }
 
 async function acquireBotInstanceLock(): Promise<boolean> {
