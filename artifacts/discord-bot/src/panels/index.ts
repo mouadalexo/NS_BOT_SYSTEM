@@ -323,13 +323,14 @@ export async function registerPanelCommands(client: Client) {
           getHelpRoleIds(interaction.guildId!),
           getStaffRoleId(interaction.guildId!),
         ]);
+        const isAdmin = interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator) ?? false;
         const rawMember = interaction.member as any;
         const memberRoleIds: string[] = rawMember
           ? (Array.isArray(rawMember.roles) ? rawMember.roles : (rawMember._roles as string[] ?? []))
           : [];
         const isCore = staffRoleId ? memberRoleIds.includes(staffRoleId) : false;
         const isStaff = helpRoleIds.some(id => memberRoleIds.includes(id));
-        const hasRole = isCore || isStaff;
+        const hasRole = isAdmin || isCore || isStaff;
         if (!hasRole) {
           await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("\u274C You don't have permission to use `/help`.")], ephemeral: true });
           return;
