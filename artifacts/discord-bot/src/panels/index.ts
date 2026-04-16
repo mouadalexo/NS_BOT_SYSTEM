@@ -53,9 +53,11 @@ import {
 import {
   openGeneralSetupPanel,
   handleGeneralStaffRoleSelect,
+  handleGeneralHelpRolesSelect,
   handleGeneralBlockedChSelect,
   handleGeneralPanelSave,
   handleGeneralPanelReset,
+  getHelpRoleIds,
 } from "./general.js";
 import {
   openAnnPanel,
@@ -316,6 +318,14 @@ export async function registerPanelCommands(client: Client) {
       } else if (name === "prefix") {
         await openPrefixPanel(interaction as ChatInputCommandInteraction);
       } else if (name === "help") {
+        const helpRoleIds = await getHelpRoleIds(interaction.guildId!);
+        const member = interaction.guild!.members.cache.get(interaction.user.id) ?? await interaction.guild!.members.fetch(interaction.user.id).catch(() => null);
+        const isAdmin = member?.permissions.has(8n) ?? false;
+        const hasRole = helpRoleIds.length === 0 || isAdmin || helpRoleIds.some(id => member?.roles.cache.has(id));
+        if (!hasRole) {
+          await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("❌ You don’t have permission to use `/help`.")], ephemeral: true });
+          return;
+        }
         const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
         await interaction.reply({ embeds: [buildAllCommandsEmbed(pvs, mgr, ctp, ann)], ephemeral: true });
       }
@@ -542,6 +552,8 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handleCtpPanelSelect(interaction);
     } else if (customId === "gp_staff_role") {
       await handleGeneralStaffRoleSelect(interaction);
+    } else if (customId === "gp_help_roles") {
+      await handleGeneralHelpRolesSelect(interaction);
     } else if (customId.startsWith("ct_")) {
       await handleCtpTagRoleSelect(interaction);
     } else if (customId === "ap_ann_role") {
