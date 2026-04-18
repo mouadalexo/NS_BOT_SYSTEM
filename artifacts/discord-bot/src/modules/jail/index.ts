@@ -174,7 +174,7 @@ export function registerJailModule(client: Client) {
       const config = await getConfig(message.guild.id);
       const hammerRoleIds = getHammerRoleIds(config);
       if (!config?.jailRoleId || !config?.memberRoleId || !hammerRoleIds.length) {
-        await sendTemporary(message, errorEmbed("The jail system is not configured yet. Use `/setup-reject` first."));
+        await sendTemporary(message, errorEmbed("The jail system is not configured yet. Use `/setup-jail` first."));
         return;
       }
 
@@ -243,7 +243,7 @@ async function handleJail(
 
   const jailRole = message.guild!.roles.cache.get(jailRoleId);
   if (!jailRole) {
-    await sendTemporary(message, errorEmbed("The configured jail role no longer exists. Please run `/setup-reject` again."));
+    await sendTemporary(message, errorEmbed("The configured jail role no longer exists. Please run `/setup-jail` again."));
     return;
   }
 
@@ -351,7 +351,7 @@ async function handleUnjail(
   const jailRole = message.guild!.roles.cache.get(jailRoleId);
   const memberRole = message.guild!.roles.cache.get(memberRoleId);
   if (!jailRole || !memberRole) {
-    await sendTemporary(message, errorEmbed("The configured jail/member role no longer exists. Please run `/setup-reject` again."));
+    await sendTemporary(message, errorEmbed("The configured jail/member role no longer exists. Please run `/setup-jail` again."));
     return;
   }
 
