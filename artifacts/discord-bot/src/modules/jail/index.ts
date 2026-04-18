@@ -32,7 +32,7 @@ function buildEmbed(color: number, title: string, description: string) {
     .setColor(color)
     .setTitle(title)
     .setDescription(description)
-    .setFooter({ text: "Night Stars \u2022 Rejection System" })
+    .setFooter({ text: "Night Stars \u2022 Jail System" })
     .setTimestamp();
 }
 
@@ -40,7 +40,7 @@ function simpleEmbed(color: number, description: string) {
   return new EmbedBuilder()
     .setColor(color)
     .setDescription(description)
-    .setFooter({ text: "Night Stars \u2022 Rejection System" });
+    .setFooter({ text: "Night Stars \u2022 Jail System" });
 }
 
 function errorEmbed(description: string) {
@@ -161,7 +161,7 @@ export function registerJailModule(client: Client) {
       const content = message.content.slice(JAIL_PREFIX.length).trim();
       const lower = content.toLowerCase();
 
-      if (!lower.startsWith("reject ") && !lower.startsWith("unreject ") && !lower.startsWith("case ")) return;
+      if (!lower.startsWith("jail ") && !lower.startsWith("unjail ") && !lower.startsWith("case ")) return;
 
       const member = message.member;
       if (!member) return;
@@ -174,28 +174,28 @@ export function registerJailModule(client: Client) {
       const config = await getConfig(message.guild.id);
       const hammerRoleIds = getHammerRoleIds(config);
       if (!config?.jailRoleId || !config?.memberRoleId || !hammerRoleIds.length) {
-        await sendTemporary(message, errorEmbed("The rejection system is not configured yet. Use `/setup-reject` first."));
+        await sendTemporary(message, errorEmbed("The jail system is not configured yet. Use `/setup-reject` first."));
         return;
       }
 
       if (!hasJailPermission(member, hammerRoleIds)) {
-        await sendTemporary(message, errorEmbed("You need one of the configured **Hammer Roles** to use rejection commands."));
+        await sendTemporary(message, errorEmbed("You need one of the configured **Hammer Roles** to use jail commands."));
         return;
       }
 
-      if (lower.startsWith("reject ")) {
-        await handleReject(message, member, content.slice(7).trim(), config.jailRoleId, config.jailLogsChannelId);
+      if (lower.startsWith("jail ")) {
+        await handleJail(message, member, content.slice(5).trim(), config.jailRoleId, config.jailLogsChannelId);
       } else {
-        await handleUnreject(message, member, content.slice(9).trim(), config.jailRoleId, config.memberRoleId, config.jailLogsChannelId);
+        await handleUnjail(message, member, content.slice(7).trim(), config.jailRoleId, config.memberRoleId, config.jailLogsChannelId);
       }
     } catch (err) {
-      console.error("[Reject] Unhandled error in messageCreate:", err);
-      await sendTemporary(message, errorEmbed("Something went wrong while processing this rejection command. Check my role and channel permissions."));
+      console.error("[Jail] Unhandled error in messageCreate:", err);
+      await sendTemporary(message, errorEmbed("Something went wrong while processing this jail command. Check my role and channel permissions."));
     }
   });
 }
 
-async function handleReject(
+async function handleJail(
   message: Message,
   moderator: GuildMember,
   args: string,
@@ -206,12 +206,12 @@ async function handleReject(
   const reason = extractReason(args);
 
   if (!targetId || !reason) {
-    await sendTemporary(message, errorEmbed("Usage: `=reject @user reason`"));
+    await sendTemporary(message, errorEmbed("Usage: `=jail @user reason`"));
     return;
   }
 
   if (targetId === moderator.id) {
-    await sendTemporary(message, errorEmbed("You cannot reject yourself."));
+    await sendTemporary(message, errorEmbed("You cannot jail yourself."));
     return;
   }
 
@@ -222,17 +222,17 @@ async function handleReject(
   }
 
   if (target.user.bot) {
-    await sendTemporary(message, errorEmbed("Bots cannot be rejected."));
+    await sendTemporary(message, errorEmbed("Bots cannot be jailed."));
     return;
   }
 
   if (target.roles.cache.has(jailRoleId)) {
-    await sendTemporary(message, errorEmbed(`**${displayName(target)}** is already rejected.`));
+    await sendTemporary(message, errorEmbed(`**${displayName(target)}** is already jailed.`));
     return;
   }
 
   if (!canModerateTarget(moderator, target)) {
-    await sendTemporary(message, errorEmbed("You cannot reject someone with an equal or higher role than yours."));
+    await sendTemporary(message, errorEmbed("You cannot jail someone with an equal or higher role than yours."));
     return;
   }
 
@@ -243,12 +243,12 @@ async function handleReject(
 
   const jailRole = message.guild!.roles.cache.get(jailRoleId);
   if (!jailRole) {
-    await sendTemporary(message, errorEmbed("The configured rejected role no longer exists. Please run `/setup-reject` again."));
+    await sendTemporary(message, errorEmbed("The configured jail role no longer exists. Please run `/setup-reject` again."));
     return;
   }
 
   if (!jailRole.editable) {
-    await sendTemporary(message, errorEmbed("I cannot manage the configured rejected role. Move my bot role above the rejected role."));
+    await sendTemporary(message, errorEmbed("I cannot manage the configured jail role. Move my bot role above the jail role."));
     return;
   }
 
@@ -267,8 +267,8 @@ async function handleReject(
   const removableRoles = target.roles.cache.filter(
     (role) => role.id !== target.guild.id && role.id !== jailRoleId && !role.managed && role.editable,
   );
-  if (removableRoles.size) await target.roles.remove(removableRoles, `Rejected by ${moderator.user.tag}: ${reason}`);
-  await target.roles.add(jailRoleId, `Rejected by ${moderator.user.tag}: ${reason}`);
+  if (removableRoles.size) await target.roles.remove(removableRoles, `Jailed by ${moderator.user.tag}: ${reason}`);
+  await target.roles.add(jailRoleId, `Jailed by ${moderator.user.tag}: ${reason}`);
 
   const [caseRecord] = await db
     .insert(jailCasesTable)
@@ -283,19 +283,19 @@ async function handleReject(
     .returning({ id: jailCasesTable.id })
     .catch(() => [null]);
 
-  // Send DM to rejected member
+  // Send DM to jailed member
   target.user.send({
     embeds: [
       new EmbedBuilder()
         .setColor(0xff4d4d)
-        .setTitle("\u274C You have been rejected")
+        .setTitle("\u274C You have been jailed")
         .setDescription(`**Reason**: ${reason}`)
-        .setFooter({ text: "Night Stars \u2022 Rejection System" })
+        .setFooter({ text: "Night Stars \u2022 Jail System" })
         .setTimestamp(),
     ],
   }).catch(() => {});
 
-  await sendTemporary(message, simpleEmbed(0x5000ff, "This user was rejected."));
+  await sendTemporary(message, simpleEmbed(0x5000ff, "This user was jailed."));
 
   const caseRef = caseRecord ? ` \u2022 Case #${caseRecord.id}` : "";
   await sendLog(
@@ -303,7 +303,7 @@ async function handleReject(
     logsChannelId,
     buildEmbed(
       0x5000ff,
-      `\uD83D\uDD28 Reject Log${caseRef}`,
+      `\uD83D\uDD28 Jail Log${caseRef}`,
       `**User**: ${displayName(target)}\n` +
       `**Hammer**: ${displayName(moderator)}\n` +
       `**Reason**: ${reason}`,
@@ -313,7 +313,7 @@ async function handleReject(
   deleteRecentMessages(message, target.id);
 }
 
-async function handleUnreject(
+async function handleUnjail(
   message: Message,
   moderator: GuildMember,
   args: string,
@@ -323,7 +323,7 @@ async function handleUnreject(
 ) {
   const targetId = extractMentionedMemberId(args);
   if (!targetId) {
-    await sendTemporary(message, errorEmbed("Usage: `=unreject @user`"));
+    await sendTemporary(message, errorEmbed("Usage: `=unjail @user`"));
     return;
   }
 
@@ -334,12 +334,12 @@ async function handleUnreject(
   }
 
   if (!target.roles.cache.has(jailRoleId)) {
-    await sendTemporary(message, errorEmbed(`**${displayName(target)}** is not rejected.`));
+    await sendTemporary(message, errorEmbed(`**${displayName(target)}** is not jailed.`));
     return;
   }
 
   if (!canModerateTarget(moderator, target)) {
-    await sendTemporary(message, errorEmbed("You cannot unreject someone with an equal or higher role than yours."));
+    await sendTemporary(message, errorEmbed("You cannot unjail someone with an equal or higher role than yours."));
     return;
   }
 
@@ -351,38 +351,38 @@ async function handleUnreject(
   const jailRole = message.guild!.roles.cache.get(jailRoleId);
   const memberRole = message.guild!.roles.cache.get(memberRoleId);
   if (!jailRole || !memberRole) {
-    await sendTemporary(message, errorEmbed("The configured rejected/member role no longer exists. Please run `/setup-reject` again."));
+    await sendTemporary(message, errorEmbed("The configured jail/member role no longer exists. Please run `/setup-reject` again."));
     return;
   }
 
   if (!jailRole.editable || !memberRole.editable) {
-    await sendTemporary(message, errorEmbed("I cannot manage the configured rejected/member role. Move my bot role above both roles."));
+    await sendTemporary(message, errorEmbed("I cannot manage the configured jail/member role. Move my bot role above both roles."));
     return;
   }
 
-  await target.roles.remove(jailRoleId, `Unrejected by ${moderator.user.tag}`);
-  await target.roles.add(memberRoleId, `Unrejected by ${moderator.user.tag}`);
+  await target.roles.remove(jailRoleId, `Unjailed by ${moderator.user.tag}`);
+  await target.roles.add(memberRoleId, `Unjailed by ${moderator.user.tag}`);
 
-  // Send DM to unrejected member
+  // Send DM to unjailed member
   target.user.send({
     embeds: [
       new EmbedBuilder()
         .setColor(0x00c851)
-        .setTitle("\u2705 You have been unrejected")
-        .setDescription("Your rejection has been lifted. Welcome back!")
-        .setFooter({ text: "Night Stars \u2022 Rejection System" })
+        .setTitle("\u2705 You have been unjailed")
+        .setDescription("Your jail has been lifted. Welcome back!")
+        .setFooter({ text: "Night Stars \u2022 Jail System" })
         .setTimestamp(),
     ],
   }).catch(() => {});
 
-  await sendTemporary(message, simpleEmbed(0x00c851, "This user was unrejected."));
+  await sendTemporary(message, simpleEmbed(0x00c851, "This user was unjailed."));
 
   await sendLog(
     message,
     logsChannelId,
     buildEmbed(
       0x00c851,
-      "\uD83D\uDD13 Unreject Log",
+      "\uD83D\uDD13 Unjail Log",
       `**User**: ${displayName(target)}\n` +
       `**Hammer**: ${displayName(moderator)}`,
     ),
@@ -411,7 +411,7 @@ async function handleCase(message: Message, moderator: GuildMember, args: string
 
   const jailRoleId = config?.jailRoleId;
   if (!jailRoleId || !target.roles.cache.has(jailRoleId)) {
-    await sendTemporary(message, simpleEmbed(0xff4d4d, `**${displayName(target)}** is not rejected.`), CASE_TTL);
+    await sendTemporary(message, simpleEmbed(0xff4d4d, `**${displayName(target)}** is not jailed.`), CASE_TTL);
     return;
   }
 
@@ -424,13 +424,13 @@ async function handleCase(message: Message, moderator: GuildMember, args: string
 
   const record = rows[0];
   if (!record) {
-    await sendTemporary(message, simpleEmbed(0x5000ff, `The rejection reason of **${displayName(target)}** is unknown (no record found).`), CASE_TTL);
+    await sendTemporary(message, simpleEmbed(0x5000ff, `The jail reason of **${displayName(target)}** is unknown (no record found).`), CASE_TTL);
     return;
   }
 
   await sendTemporary(
     message,
-    simpleEmbed(0x5000ff, `The rejection reason of **${displayName(target)}** is: ${record.reason}`),
+    simpleEmbed(0x5000ff, `The jail reason of **${displayName(target)}** is: ${record.reason}`),
     CASE_TTL,
   );
 }
