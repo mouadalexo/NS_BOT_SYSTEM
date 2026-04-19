@@ -14,6 +14,7 @@ import { registerSystemRoleModule } from "./modules/system-role/index.js";
 import { registerStatsModule } from "./modules/stats/index.js";
 import { registerAnnouncementsModule } from "./modules/announcements/index.js";
 import { registerJailModule } from "./modules/jail/index.js";
+import { registerRoleGiverModule } from "./modules/role-giver/index.js";
 import { registerPanelCommands } from "./panels/index.js";
 
 const BOT_INSTANCE_LOCK_KEY = 489215731;
@@ -26,6 +27,22 @@ async function ensureRuntimeSchema(): Promise<void> {
     alter table bot_config add column if not exists jail_hammer_role_id text;
     alter table bot_config add column if not exists jail_hammer_role_ids_json text;
     alter table bot_config add column if not exists jail_logs_channel_id text;
+  `);
+
+  await pool.query(`
+    create table if not exists role_giver_rules (
+      id serial primary key,
+      guild_id text not null,
+      command_name text not null,
+      target_role_id text not null,
+      giver_role_ids_json text not null,
+      linked_category text,
+      enabled boolean default true not null,
+      created_at timestamp default now() not null,
+      updated_at timestamp default now() not null
+    );
+    create unique index if not exists role_giver_rules_guild_command_idx
+      on role_giver_rules (guild_id, command_name);
   `);
   await pool.query(`
     create table if not exists jail_cases (
@@ -231,5 +248,6 @@ async function startBot(token: string): Promise<void> {
     registerStatsModule(client);
     registerAnnouncementsModule(client);
     registerJailModule(client);
+    registerRoleGiverModule(client);
   });
 }

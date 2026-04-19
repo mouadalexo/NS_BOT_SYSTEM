@@ -18,9 +18,10 @@ import {
   TextInputBuilder,
   TextInputStyle,
   ChannelType,
+  RoleSelectMenuBuilder,
 } from "discord.js";
 import { isMainGuild } from "../utils/guildFilter.js";
-import { db } from "@workspace/db";
+import { db, pool } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import {
@@ -271,12 +272,19 @@ export async function registerPanelCommands(client: Client) {
     .addSubcommand((sub) => sub.setName("setup").setDescription("Set the staff role and blocked channels"))
     .toJSON();
 
+  const roleGiverCommand = new SlashCommandBuilder()
+    .setName("role-giver")
+    .setDescription("Open the Role Giver setup panel")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .addSubcommand((sub) => sub.setName("setup").setDescription("Open the Role Giver setup panel"))
+    .toJSON();
+
   const rest = new REST().setToken(token);
 
   const registerForGuild = async (guildId: string, guildName: string) => {
     try {
       await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
-        body: [setupCommand, setupJailCommand, annCommand, generalCommand, helpCommand, pingCommand, prefixCommand],
+        body: [setupCommand, setupJailCommand, annCommand, generalCommand, roleGiverCommand, helpCommand, pingCommand, prefixCommand],
       });
       console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
@@ -306,6 +314,8 @@ export async function registerPanelCommands(client: Client) {
         await handleAnnCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "general") {
         await handleGeneralCommand(interaction as ChatInputCommandInteraction);
+      } else if (name === "role-giver") {
+        await handleRoleGiverCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
         await interaction.reply({
           embeds: [
@@ -349,6 +359,7 @@ export async function registerPanelCommands(client: Client) {
         "gp_save", "gp_reset",
         "pfx_edit",
         "ap_save", "ap_reset", "ap_event_color_open", "ap_color_event_title", "ap_color_event_desc", "ap_color_event_add", "ap_back",
+        "rg_add", "rg_preview", "rg_delete", "rg_save", "rg_cancel", "rg_back",
       ];
       if (panelIds.includes(interaction.customId) || interaction.customId.startsWith("ct_")) {
         await handleButtonInteraction(interaction as ButtonInteraction);
@@ -388,6 +399,8 @@ export async function registerPanelCommands(client: Client) {
         await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "event_desc");
       } else if (customId === "ap_modal_event_add") {
         await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "event_add");
+      } else if (customId.startsWith("rg_")) {
+        await handleRoleGiverModalSubmit(interaction as ModalSubmitInteraction);
       }
       return;
     }
@@ -569,6 +582,8 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handleAnnAnnRoleSelect(interaction);
     } else if (customId === "ap_event_role") {
       await handleAnnEventRoleSelect(interaction);
+    } else if (customId.startsWith("rg_")) {
+      await handleRoleGiverRoleSelect(interaction);
     }
   } catch (err) {
     console.error("Panel role select error:", err);
@@ -672,4 +687,305 @@ async function handlePrefixModalSubmit(interaction: ModalSubmitInteraction) {
     new ButtonBuilder().setCustomId("pfx_edit").setLabel("Edit Again").setStyle(ButtonStyle.Secondary),
   );
   await interaction.update({ embeds: [embed], components: [row] });
+}
+
+
+type RoleGiverDraft = {
+  commandName: string;
+  linkedCategory: string | null;
+  targetRoleId?: string;
+  giverRoleIds: string[];
+};
+
+const roleGiverDrafts = new Map<string, RoleGiverDraft>();
+
+function roleGiverDraftKey(interaction: { guildId: string | null; user: { id: string } }) {
+  return `${interaction.guildId}:${interaction.user.id}`;
+}
+
+function normalizeRoleGiverCommandName(raw: string) {
+  return raw.trim().toLowerCase().replace(/^=/, "");
+}
+
+function validRoleGiverCommandName(commandName: string) {
+  return /^[a-z0-9_-]{2,32}$/.test(commandName);
+}
+
+function buildRoleGiverPanelEmbed() {
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("Role Giver Setup Panel")
+    .setDescription(
+      "Manage all role-giver commands from this one panel.\n\n" +
+      "Enter the command name, select Add role, and optionally enter a category name. Members will use `=[cmd name] @user`, for example `=legend @user`.\n\n" +
+      "If 2 or 3 roles use the same category, giving one of them to a user removes the other roles from that same category first. Leave category empty if this role should not remove anything."
+    )
+    .setFooter({ text: "Night Stars • Role Giver" })
+    .setTimestamp();
+}
+
+function buildRoleGiverPanelRows() {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("rg_add").setLabel("Add Role").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("rg_preview").setLabel("Preview Commands").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId("rg_delete").setLabel("Delete Role").setStyle(ButtonStyle.Danger),
+    ),
+  ];
+}
+
+async function handleRoleGiverCommand(interaction: ChatInputCommandInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("You need **Administrator** permission to use this.")],
+      ephemeral: true,
+    });
+    return;
+  }
+
+  await interaction.reply({
+    embeds: [buildRoleGiverPanelEmbed()],
+    components: buildRoleGiverPanelRows(),
+    ephemeral: true,
+  });
+}
+
+async function handleRoleGiverButton(interaction: ButtonInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("You need **Administrator** permission to use this.")], ephemeral: true });
+    return;
+  }
+
+  if (interaction.customId === "rg_add") {
+    const modal = new ModalBuilder().setCustomId("rg_add_modal").setTitle("Add Role Giver");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("rg_command")
+          .setLabel("Command name")
+          .setPlaceholder("legend  ->  =legend @user")
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(2)
+          .setMaxLength(32)
+          .setRequired(true),
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("rg_category")
+          .setLabel("Category name (optional)")
+          .setPlaceholder("level")
+          .setStyle(TextInputStyle.Short)
+          .setMaxLength(32)
+          .setRequired(false),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (interaction.customId === "rg_preview") {
+    await handleRoleGiverPreview(interaction);
+    return;
+  }
+
+  if (interaction.customId === "rg_delete") {
+    const modal = new ModalBuilder().setCustomId("rg_delete_modal").setTitle("Delete Role Giver");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("rg_delete_command")
+          .setLabel("Command name to delete")
+          .setPlaceholder("legend  ->  =legend @user")
+          .setStyle(TextInputStyle.Short)
+          .setMinLength(2)
+          .setMaxLength(32)
+          .setRequired(true),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (interaction.customId === "rg_back" || interaction.customId === "rg_cancel") {
+    roleGiverDrafts.delete(roleGiverDraftKey(interaction));
+    await interaction.update({ embeds: [buildRoleGiverPanelEmbed()], components: buildRoleGiverPanelRows() });
+    return;
+  }
+
+  if (interaction.customId === "rg_save") {
+    await handleRoleGiverSave(interaction);
+  }
+}
+
+async function handleRoleGiverModalSubmit(interaction: ModalSubmitInteraction) {
+  if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("You need **Administrator** permission to use this.")], ephemeral: true });
+    return;
+  }
+
+  if (interaction.customId === "rg_add_modal") {
+    const commandName = normalizeRoleGiverCommandName(interaction.fields.getTextInputValue("rg_command"));
+    if (!validRoleGiverCommandName(commandName)) {
+      await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("Command must be 2-32 characters: letters, numbers, `_`, or `-` only. Example: `legend`.")], ephemeral: true });
+      return;
+    }
+
+    const linkedCategoryRaw = interaction.fields.getTextInputValue("rg_category")?.trim() ?? "";
+    const draft: RoleGiverDraft = {
+      commandName,
+      linkedCategory: linkedCategoryRaw ? linkedCategoryRaw.toLowerCase() : null,
+      giverRoleIds: [],
+    };
+    roleGiverDrafts.set(roleGiverDraftKey(interaction), draft);
+    await interaction.reply({ embeds: [buildRoleGiverDraftEmbed(draft)], components: buildRoleGiverDraftRows(), ephemeral: true });
+    return;
+  }
+
+  if (interaction.customId === "rg_delete_modal") {
+    const commandName = normalizeRoleGiverCommandName(interaction.fields.getTextInputValue("rg_delete_command"));
+    const result = await pool.query(
+      "delete from role_giver_rules where guild_id = $1 and command_name = $2",
+      [interaction.guildId!, commandName],
+    );
+    await interaction.reply({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(result.rowCount ? 0x00c851 : 0xff4d4d)
+          .setDescription(result.rowCount ? `Deleted role-giver command \`=${commandName}\`.` : `No role-giver command named \`=${commandName}\` was found.`)
+          .setFooter({ text: "Night Stars • Role Giver" }),
+      ],
+      components: buildRoleGiverPanelRows(),
+      ephemeral: true,
+    });
+  }
+}
+
+function buildRoleGiverDraftEmbed(draft: RoleGiverDraft) {
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("Add Role Giver")
+    .setDescription(
+      `**Command name** — \`=${draft.commandName} @user\`\n` +
+      `**Add role** — ${draft.targetRoleId ? `<@&${draft.targetRoleId}>` : "Not selected"}\n` +
+      `**Allowed giver roles** — ${draft.giverRoleIds.length ? draft.giverRoleIds.map((id) => `<@&${id}>`).join(", ") : "Not selected"}\n` +
+      `**Category name** — ${draft.linkedCategory ? `\`${draft.linkedCategory}\`` : "No category"}\n\n` +
+      "Select Add role and the giver roles allowed to use this command, then click Save. Roles in the same category replace each other."
+    )
+    .setFooter({ text: "Night Stars • Role Giver" })
+    .setTimestamp();
+}
+
+function buildRoleGiverDraftRows() {
+  return [
+    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+      new RoleSelectMenuBuilder()
+        .setCustomId("rg_target_role")
+        .setPlaceholder("Add role")
+        .setMinValues(1)
+        .setMaxValues(1),
+    ),
+    new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+      new RoleSelectMenuBuilder()
+        .setCustomId("rg_giver_roles")
+        .setPlaceholder("Select role(s) allowed to give it")
+        .setMinValues(1)
+        .setMaxValues(5),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId("rg_save").setLabel("Save Role").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId("rg_cancel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+async function handleRoleGiverRoleSelect(interaction: RoleSelectMenuInteraction) {
+  const draft = roleGiverDrafts.get(roleGiverDraftKey(interaction));
+  if (!draft) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("This setup session expired. Open `/role-giver setup` again.")], ephemeral: true });
+    return;
+  }
+
+  if (interaction.customId === "rg_target_role") {
+    draft.targetRoleId = interaction.values[0];
+  } else if (interaction.customId === "rg_giver_roles") {
+    draft.giverRoleIds = [...new Set(interaction.values)];
+  }
+
+  roleGiverDrafts.set(roleGiverDraftKey(interaction), draft);
+  await interaction.update({ embeds: [buildRoleGiverDraftEmbed(draft)], components: buildRoleGiverDraftRows() });
+}
+
+async function handleRoleGiverSave(interaction: ButtonInteraction) {
+  const draft = roleGiverDrafts.get(roleGiverDraftKey(interaction));
+  if (!draft) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("This setup session expired. Open `/role-giver setup` again.")], ephemeral: true });
+    return;
+  }
+
+  if (!draft.targetRoleId || !draft.giverRoleIds.length) {
+    await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("Select both the role to give and at least one giver role before saving.")], ephemeral: true });
+    return;
+  }
+
+  await pool.query(
+    `insert into role_giver_rules (guild_id, command_name, target_role_id, giver_role_ids_json, linked_category, enabled, updated_at)
+     values ($1, $2, $3, $4, $5, true, now())
+     on conflict (guild_id, command_name)
+     do update set target_role_id = excluded.target_role_id,
+       giver_role_ids_json = excluded.giver_role_ids_json,
+       linked_category = excluded.linked_category,
+       enabled = true,
+       updated_at = now()`,
+    [interaction.guildId!, draft.commandName, draft.targetRoleId, JSON.stringify(draft.giverRoleIds), draft.linkedCategory],
+  );
+  roleGiverDrafts.delete(roleGiverDraftKey(interaction));
+
+  await interaction.update({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x00c851)
+        .setTitle("Role Giver Command Saved")
+        .setDescription(
+          `**Command name** — \`=${draft.commandName} @user\`\n` +
+          `**Add role** — <@&${draft.targetRoleId}>\n` +
+          `**Allowed giver roles** — ${draft.giverRoleIds.map((id) => `<@&${id}>`).join(", ")}\n` +
+          `**Category name** — ${draft.linkedCategory ? `\`${draft.linkedCategory}\`` : "No category"}`,
+        )
+        .setFooter({ text: "Night Stars • Role Giver" })
+        .setTimestamp(),
+    ],
+    components: buildRoleGiverPanelRows(),
+  });
+}
+
+async function handleRoleGiverPreview(interaction: ButtonInteraction) {
+  const result = await pool.query<{
+    command_name: string;
+    target_role_id: string;
+    giver_role_ids_json: string;
+    linked_category: string | null;
+  }>(
+    "select command_name, target_role_id, giver_role_ids_json, linked_category from role_giver_rules where guild_id = $1 and enabled = true order by command_name",
+    [interaction.guildId!],
+  );
+
+  const rows = result.rows;
+  const description = rows.length
+    ? rows.map((row) => {
+      let giverIds: string[] = [];
+      try { giverIds = JSON.parse(row.giver_role_ids_json); } catch {}
+      return `**=${row.command_name} @user** → <@&${row.target_role_id}>\nAllowed: ${giverIds.map((id) => `<@&${id}>`).join(", ") || "None"}\nLinked: ${row.linked_category ? `\`${row.linked_category}\`` : "Not linked"}`;
+    }).join("\n\n")
+    : "No role-giver commands are configured yet. Click Add Role first.";
+
+  await interaction.update({
+    embeds: [new EmbedBuilder().setColor(0x5000ff).setTitle("Role Giver Commands").setDescription(description).setFooter({ text: "Night Stars • Role Giver" })],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("rg_add").setLabel("Add Role").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("rg_delete").setLabel("Delete Role").setStyle(ButtonStyle.Danger),
+        new ButtonBuilder().setCustomId("rg_back").setLabel("Back to Panel").setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
 }
