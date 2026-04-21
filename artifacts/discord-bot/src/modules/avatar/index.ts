@@ -1,18 +1,12 @@
 import { Client, EmbedBuilder, Message } from "discord.js";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-const TRIGGER_RE = /^a(?:\s+|$)(.*)$/i;
-
-function extractUserId(message: Message, raw: string): string | null {
-  // Prefer Discord's parsed mentions (always reliable)
-  const mention = message.mentions.users.first();
-  if (mention) return mention.id;
-  if (!raw) return null;
-  const arg = raw.trim().split(/\s+/)[0]?.replace(/[<@!>]/g, "");
-  if (!arg) return null;
-  if (/^\d{15,25}$/.test(arg)) return arg;
-  return null;
-}
+// Strict triggers:
+//   "A"                     -> author's avatar
+//   "A @user"               -> that user's avatar
+//   "A 123456789012345678"  -> that user id's avatar
+// Anything else (e.g. "A foo", "A @user extra") is ignored.
+const TRIGGER_RE = /^a(?:\s+(<@!?(\d{15,25})>|(\d{15,25})))?\s*$/i;
 
 export function registerAvatarModule(client: Client) {
   client.on("messageCreate", async (message: Message) => {
@@ -23,7 +17,7 @@ export function registerAvatarModule(client: Client) {
       const match = trimmed.match(TRIGGER_RE);
       if (!match) return;
 
-      const targetId = extractUserId(message, match[1] ?? "") ?? message.author.id;
+      const targetId = match[2] ?? match[3] ?? message.author.id;
 
       const member = await message.guild.members.fetch(targetId).catch(() => null);
       const user = member?.user ?? (await message.client.users.fetch(targetId).catch(() => null));
