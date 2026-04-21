@@ -23,14 +23,7 @@ export function registerAvatarModule(client: Client) {
       const match = trimmed.match(TRIGGER_RE);
       if (!match) return;
 
-      const targetId = extractUserId(message, match[1] ?? "");
-      if (!targetId) {
-        await message.reply({
-          content: "Usage: `A @user` or `A <userId>`",
-          allowedMentions: { repliedUser: false, parse: [] },
-        }).catch(() => {});
-        return;
-      }
+      const targetId = extractUserId(message, match[1] ?? "") ?? message.author.id;
 
       const member = await message.guild.members.fetch(targetId).catch(() => null);
       const user = member?.user ?? (await message.client.users.fetch(targetId).catch(() => null));
