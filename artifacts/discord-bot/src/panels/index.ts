@@ -55,6 +55,7 @@ import {
   openGeneralSetupPanel,
   handleGeneralStaffRoleSelect,
   handleGeneralHelpRolesSelect,
+  handleGeneralEventHosterSelect,
   handleGeneralBlockedChSelect,
   handleGeneralPanelSave,
   handleGeneralPanelReset,
@@ -592,6 +593,8 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handleGeneralStaffRoleSelect(interaction);
     } else if (customId === "gp_help_roles") {
       await handleGeneralHelpRolesSelect(interaction);
+    } else if (customId === "gp_event_hoster") {
+      await handleGeneralEventHosterSelect(interaction);
     } else if (customId.startsWith("ct_")) {
       await handleCtpTagRoleSelect(interaction);
     } else if (customId === "ap_ann_role") {

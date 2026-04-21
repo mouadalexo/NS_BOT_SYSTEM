@@ -18,6 +18,7 @@ interface GeneralPanelState {
   coreRoleId?: string;
   blockedChannels: string[];
   staffRoleIds: string[];
+  eventHosterRoleId?: string;
 }
 
 export const generalPanelState = new Map<string, GeneralPanelState>();
@@ -39,6 +40,8 @@ function buildGeneralPanelEmbed(state: GeneralPanelState) {
       "\u2514 Bypasses all permission checks across PVS\n\n" +
       `**Staff Role** \u2014 ${staffList}\n` +
       "\u2514 Only these roles can use `/help` (Admins and Core Role always bypass)\n\n" +
+      `**Event Hoster Role** \u2014 ${state.eventHosterRoleId ? `<@&${state.eventHosterRoleId}>` : "not set"}\n` +
+      "\u2514 Can use `=stagelock` / `=stageunlock` and host event announcements\n\n" +
       `**Blocked Channels** \u2014 ${blockedList}\n` +
       "\u2514 NS Bot text commands will not work in these channels"
     )
@@ -46,7 +49,7 @@ function buildGeneralPanelEmbed(state: GeneralPanelState) {
 }
 
 function buildGeneralPanelComponents(state: GeneralPanelState) {
-  const canSave = !!(state.coreRoleId || state.blockedChannels.length || state.staffRoleIds.length);
+  const canSave = !!(state.coreRoleId || state.blockedChannels.length || state.staffRoleIds.length || state.eventHosterRoleId);
 
   const row1 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
@@ -68,7 +71,19 @@ function buildGeneralPanelComponents(state: GeneralPanelState) {
       .setMaxValues(10)
   );
 
-  const row3 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
+  const row3 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
+    new RoleSelectMenuBuilder()
+      .setCustomId("gp_event_hoster")
+      .setPlaceholder(
+        state.eventHosterRoleId
+          ? "\u2705 Event Hoster Role (set)"
+          : "Select Event Hoster Role\u2026"
+      )
+      .setMinValues(0)
+      .setMaxValues(1)
+  );
+
+  const row4 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("gp_blocked_ch")
       .setPlaceholder(
@@ -81,7 +96,7 @@ function buildGeneralPanelComponents(state: GeneralPanelState) {
       .setMaxValues(25)
   );
 
-  const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
+  const row5 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("gp_save")
       .setLabel("Save")
@@ -93,7 +108,7 @@ function buildGeneralPanelComponents(state: GeneralPanelState) {
       .setStyle(ButtonStyle.Danger),
   );
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3, row4, row5];
 }
 
 export async function openGeneralSetupPanel(interaction: ButtonInteraction) {
@@ -120,6 +135,7 @@ export async function openGeneralSetupPanel(interaction: ButtonInteraction) {
     coreRoleId: row?.staffRoleId ?? undefined,
     blockedChannels: blocked,
     staffRoleIds: staffRoles,
+    eventHosterRoleId: row?.eventHosterRoleId ?? undefined,
   };
   generalPanelState.set(userId, state);
 
@@ -157,6 +173,17 @@ export async function handleGeneralHelpRolesSelect(interaction: RoleSelectMenuIn
   });
 }
 
+export async function handleGeneralEventHosterSelect(interaction: RoleSelectMenuInteraction) {
+  const userId = interaction.user.id;
+  const state = generalPanelState.get(userId) ?? { blockedChannels: [], staffRoleIds: [] };
+  state.eventHosterRoleId = interaction.values[0];
+  generalPanelState.set(userId, state);
+  await interaction.update({
+    embeds: [buildGeneralPanelEmbed(state)],
+    components: buildGeneralPanelComponents(state),
+  });
+}
+
 export async function handleGeneralBlockedChSelect(interaction: ChannelSelectMenuInteraction) {
   const userId = interaction.user.id;
   const state = generalPanelState.get(userId) ?? { blockedChannels: [], staffRoleIds: [] };
@@ -177,6 +204,7 @@ export async function handleGeneralPanelSave(interaction: ButtonInteraction) {
   if (state.coreRoleId) updateData.staffRoleId = state.coreRoleId;
   updateData.blockedChannelsJson = JSON.stringify(state.blockedChannels);
   updateData.helpRoleIdsJson = JSON.stringify(state.staffRoleIds);
+  updateData.eventHosterRoleId = state.eventHosterRoleId ?? null;
 
   const existing = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
   if (existing.length) {
@@ -187,6 +215,7 @@ export async function handleGeneralPanelSave(interaction: ButtonInteraction) {
       staffRoleId: state.coreRoleId,
       blockedChannelsJson: JSON.stringify(state.blockedChannels),
       helpRoleIdsJson: JSON.stringify(state.staffRoleIds),
+      eventHosterRoleId: state.eventHosterRoleId ?? null,
     });
   }
 
@@ -208,6 +237,7 @@ export async function handleGeneralPanelSave(interaction: ButtonInteraction) {
         .setDescription(
           `**Core Role** \u2014 ${state.coreRoleId ? `<@&${state.coreRoleId}>` : "not set"}\n` +
           `**Staff Role** \u2014 ${staffList}\n` +
+          `**Event Hoster Role** \u2014 ${state.eventHosterRoleId ? `<@&${state.eventHosterRoleId}>` : "not set"}\n` +
           `**Blocked Channels** \u2014 ${blockedList}`
         )
         .setFooter({ text: "Night Stars \u2022 General Setup" }),

@@ -1,11 +1,15 @@
 import { Client, EmbedBuilder, Message } from "discord.js";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-const TRIGGER_RE = /^a\s+(.+)$/i;
+const TRIGGER_RE = /^a(?:\s+|$)(.*)$/i;
 
-function extractUserId(arg: string): string | null {
-  const mention = arg.match(/^<@!?(\d{15,25})>$/);
-  if (mention) return mention[1];
+function extractUserId(message: Message, raw: string): string | null {
+  // Prefer Discord's parsed mentions (always reliable)
+  const mention = message.mentions.users.first();
+  if (mention) return mention.id;
+  if (!raw) return null;
+  const arg = raw.trim().split(/\s+/)[0]?.replace(/[<@!>]/g, "");
+  if (!arg) return null;
   if (/^\d{15,25}$/.test(arg)) return arg;
   return null;
 }
@@ -15,15 +19,28 @@ export function registerAvatarModule(client: Client) {
     try {
       if (!message.guild || message.author.bot) return;
       if (!isMainGuild(message.guild.id)) return;
-      const match = message.content.trim().match(TRIGGER_RE);
+      const trimmed = message.content.trim();
+      const match = trimmed.match(TRIGGER_RE);
       if (!match) return;
-      const arg = match[1].trim().split(/\s+/)[0];
-      const targetId = extractUserId(arg);
-      if (!targetId) return;
+
+      const targetId = extractUserId(message, match[1] ?? "");
+      if (!targetId) {
+        await message.reply({
+          content: "Usage: `A @user` or `A <userId>`",
+          allowedMentions: { repliedUser: false, parse: [] },
+        }).catch(() => {});
+        return;
+      }
 
       const member = await message.guild.members.fetch(targetId).catch(() => null);
       const user = member?.user ?? (await message.client.users.fetch(targetId).catch(() => null));
-      if (!user) return;
+      if (!user) {
+        await message.reply({
+          content: "Could not find that user.",
+          allowedMentions: { repliedUser: false, parse: [] },
+        }).catch(() => {});
+        return;
+      }
 
       const globalAvatar = user.displayAvatarURL({ extension: "png", size: 1024, forceStatic: false });
       const serverAvatar = member?.displayAvatarURL({ extension: "png", size: 1024, forceStatic: false });
@@ -41,7 +58,12 @@ export function registerAvatarModule(client: Client) {
         .setFooter({ text: `Requested by ${message.author.username}`, iconURL: message.author.displayAvatarURL() })
         .setTimestamp();
 
-      await message.reply({ embeds: [embed], allowedMentions: { repliedUser: false } }).catch(() => {});
+      await message.reply({
+        embeds: [embed],
+        allowedMentions: { repliedUser: false, parse: [] },
+      }).catch((err) => {
+        console.error("[Avatar] reply failed:", err?.message ?? err);
+      });
     } catch (err) {
       console.error("[Avatar] messageCreate error:", err);
     }

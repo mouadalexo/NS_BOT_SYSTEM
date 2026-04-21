@@ -11,7 +11,6 @@ import { pool } from "@workspace/db";
 import { registerPVSModule } from "./modules/pvs/index.js";
 import { registerCTPModule } from "./modules/ctp/index.js";
 import { registerSystemRoleModule } from "./modules/system-role/index.js";
-import { registerStatsModule } from "./modules/stats/index.js";
 import { registerAnnouncementsModule } from "./modules/announcements/index.js";
 import { registerJailModule } from "./modules/jail/index.js";
 import { registerRoleGiverModule } from "./modules/role-giver/index.js";
@@ -248,7 +247,6 @@ async function startBot(token: string): Promise<void> {
     registerSystemRoleModule(client);
     registerPVSModule(client);
     registerCTPModule(client);
-    registerStatsModule(client);
     registerAnnouncementsModule(client);
     registerJailModule(client);
     registerRoleGiverModule(client);
