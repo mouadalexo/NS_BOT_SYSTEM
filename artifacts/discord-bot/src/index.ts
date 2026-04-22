@@ -17,6 +17,9 @@ import { registerRoleGiverModule } from "./modules/role-giver/index.js";
 import { registerAvatarModule } from "./modules/avatar/index.js";
 import { registerAutoDeleteModule } from "./modules/auto-delete/index.js";
 import { registerStageLockModule } from "./modules/stage-lock/index.js";
+import { registerMoveModule } from "./modules/move/index.js";
+import { registerClearModule } from "./modules/clear/index.js";
+import { registerWelcomeModule } from "./modules/welcome/index.js";
 import { registerPanelCommands } from "./panels/index.js";
 
 const BOT_INSTANCE_LOCK_KEY = 489215731;
@@ -29,6 +32,9 @@ async function ensureRuntimeSchema(): Promise<void> {
     alter table bot_config add column if not exists jail_hammer_role_id text;
     alter table bot_config add column if not exists jail_hammer_role_ids_json text;
     alter table bot_config add column if not exists jail_logs_channel_id text;
+    alter table bot_config add column if not exists move_role_ids_json text;
+    alter table bot_config add column if not exists clear_role_ids_json text;
+    alter table bot_config add column if not exists welcome_config_json text;
   `);
 
   await pool.query(`
@@ -253,5 +259,8 @@ async function startBot(token: string): Promise<void> {
     registerAvatarModule(client);
     registerAutoDeleteModule(client).catch((err) => console.error("[Bot] AutoDelete init error:", err));
     registerStageLockModule(client);
+    registerMoveModule(client);
+    registerClearModule(client);
+    registerWelcomeModule(client);
   });
 }

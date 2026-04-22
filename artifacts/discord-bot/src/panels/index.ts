@@ -74,6 +74,15 @@ import {
   handleAnnColorModalSubmit,
   handleAnnColorBack,
 } from "./ann.js";
+import {
+  openWelcomePanel,
+  handleWelcomeButton,
+  handleWelcomeChannelSelect,
+  handleWelcomeStringSelect,
+  handleWelcomeModalSubmit,
+  handleSetupMoveCommand,
+  handleSetupClearCommand,
+} from "./welcome.js";
 
 function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
   return new EmbedBuilder()
@@ -132,6 +141,21 @@ function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
       {
         name: "\uD83D\uDDBC\uFE0F Utilities (everyone)",
         value: "`A @user` \u2014 Show a member's global & server avatar",
+        inline: false,
+      },
+      {
+        name: "\uD83D\uDD04 Move (Move Role required)",
+        value: "`aji @user` \u2014 Move that member to your current voice channel",
+        inline: false,
+      },
+      {
+        name: "\uD83E\uDDF9 Clear (Clear Role or Admin)",
+        value: "`mse7 N` \u2014 Delete the last N messages in this channel (max 99)",
+        inline: false,
+      },
+      {
+        name: "\uD83D\uDC4B Welcome (Admin)",
+        value: "`/welcome setup` \u2014 Configure server channel & DM welcome messages",
         inline: false,
       },
       {
@@ -294,12 +318,41 @@ export async function registerPanelCommands(client: Client) {
     .addSubcommand((sub) => sub.setName("setup").setDescription("Open the Role Giver setup panel"))
     .toJSON();
 
+  const welcomeCommand = new SlashCommandBuilder()
+    .setName("welcome")
+    .setDescription("Configure the welcome system")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .addSubcommand((sub) => sub.setName("setup").setDescription("Open the welcome system setup panel"))
+    .toJSON();
+
+  const buildRoleSet = (builder: SlashCommandBuilder) =>
+    builder
+      .addRoleOption((o) => o.setName("role-1").setDescription("Allowed role").setRequired(true))
+      .addRoleOption((o) => o.setName("role-2").setDescription("Additional allowed role").setRequired(false))
+      .addRoleOption((o) => o.setName("role-3").setDescription("Additional allowed role").setRequired(false))
+      .addRoleOption((o) => o.setName("role-4").setDescription("Additional allowed role").setRequired(false))
+      .addRoleOption((o) => o.setName("role-5").setDescription("Additional allowed role").setRequired(false));
+
+  const setupMoveCommand = buildRoleSet(
+    new SlashCommandBuilder()
+      .setName("setup-move")
+      .setDescription("Roles allowed to use 'aji @user' to move members")
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+  ).toJSON();
+
+  const setupClearCommand = buildRoleSet(
+    new SlashCommandBuilder()
+      .setName("setup-clear")
+      .setDescription("Roles allowed to use 'mse7 N' to clear messages")
+      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
+  ).toJSON();
+
   const rest = new REST().setToken(token);
 
   const registerForGuild = async (guildId: string, guildName: string) => {
     try {
       await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
-        body: [setupCommand, setupJailCommand, annCommand, generalCommand, roleGiverCommand, helpCommand, pingCommand, prefixCommand],
+        body: [setupCommand, setupJailCommand, annCommand, generalCommand, roleGiverCommand, welcomeCommand, setupMoveCommand, setupClearCommand, helpCommand, pingCommand, prefixCommand],
       });
       console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
@@ -331,6 +384,19 @@ export async function registerPanelCommands(client: Client) {
         await handleGeneralCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "role-giver") {
         await handleRoleGiverCommand(interaction as ChatInputCommandInteraction);
+      } else if (name === "welcome") {
+        if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+          await interaction.reply({
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("\u274C You need **Administrator** permission to use this.")],
+            ephemeral: true,
+          });
+        } else {
+          await openWelcomePanel(interaction as ChatInputCommandInteraction);
+        }
+      } else if (name === "setup-move") {
+        await handleSetupMoveCommand(interaction as ChatInputCommandInteraction);
+      } else if (name === "setup-clear") {
+        await handleSetupClearCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
         await interaction.reply({
           embeds: [
@@ -376,6 +442,10 @@ export async function registerPanelCommands(client: Client) {
         "ap_save", "ap_reset", "ap_event_color_open", "ap_color_event_title", "ap_color_event_desc", "ap_color_event_add", "ap_back",
         "rg_add", "rg_edit", "rg_preview", "rg_delete", "rg_save", "rg_cancel", "rg_back",
       ];
+      if (interaction.customId.startsWith("wc_")) {
+        try { await handleWelcomeButton(interaction as ButtonInteraction); } catch (err) { console.error("Welcome button error:", err); }
+        return;
+      }
       if (panelIds.includes(interaction.customId) || interaction.customId.startsWith("ct_") || interaction.customId.startsWith("rg_")) {
         await handleButtonInteraction(interaction as ButtonInteraction);
       }
@@ -387,6 +457,8 @@ export async function registerPanelCommands(client: Client) {
         try { await handleCtpGameSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP game select error:", err); }
       } else if (interaction.customId.startsWith("ct_")) {
         try { await handleCtpTagStringSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP temp select error:", err); }
+      } else if (interaction.customId.startsWith("wc_")) {
+        try { await handleWelcomeStringSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("Welcome select error:", err); }
       }
       return;
     }
@@ -397,6 +469,10 @@ export async function registerPanelCommands(client: Client) {
     }
 
     if (interaction.isChannelSelectMenu()) {
+      if (interaction.customId.startsWith("wc_")) {
+        try { await handleWelcomeChannelSelect(interaction as ChannelSelectMenuInteraction); } catch (err) { console.error("Welcome channel select error:", err); }
+        return;
+      }
       await handleChannelSelectInteraction(interaction as ChannelSelectMenuInteraction);
       return;
     }
@@ -416,6 +492,8 @@ export async function registerPanelCommands(client: Client) {
         await handleAnnColorModalSubmit(interaction as ModalSubmitInteraction, "event_add");
       } else if (customId.startsWith("rg_")) {
         await handleRoleGiverModalSubmit(interaction as ModalSubmitInteraction);
+      } else if (customId.startsWith("wc_modal_")) {
+        try { await handleWelcomeModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Welcome modal error:", err); }
       }
       return;
     }
