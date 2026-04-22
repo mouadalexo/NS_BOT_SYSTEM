@@ -8,7 +8,14 @@ import type { GuildMember, Message, NewsChannel, TextChannel } from "discord.js"
 import { pool } from "@workspace/db";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-const PREFIX = "=";
+async function getRoleGiverPrefix(guildId: string): Promise<string> {
+  const result = await pool.query<{ pvs_prefix: string | null }>(
+    "select pvs_prefix from bot_config where guild_id = $1 limit 1",
+    [guildId],
+  );
+  return result.rows[0]?.pvs_prefix ?? "=";
+}
+
 const CONFIRMATION_TTL = 5000;
 const COMMAND_RE = /^[a-z0-9_-]{2,32}$/;
 
@@ -111,6 +118,7 @@ export function registerRoleGiverModule(client: Client) {
       if (message.author.bot) return;
       if (!message.guild) return;
       if (!isMainGuild(message.guild.id)) return;
+      const PREFIX = await getRoleGiverPrefix(message.guild.id);
       if (!message.content.startsWith(PREFIX)) return;
 
       const [rawCommand, ...rest] = message.content.slice(PREFIX.length).trim().split(/\s+/);
