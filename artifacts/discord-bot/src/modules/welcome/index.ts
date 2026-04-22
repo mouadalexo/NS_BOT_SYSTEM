@@ -1,55 +1,56 @@
 import {
+  AttachmentBuilder,
   Client,
   EmbedBuilder,
+  Guild,
   GuildMember,
-  TextChannel,
   NewsChannel,
+  TextChannel,
 } from "discord.js";
 import { pool } from "@workspace/db";
 import { isMainGuild } from "../../utils/guildFilter.js";
+import { fileURLToPath } from "node:url";
+import path from "node:path";
+import fs from "node:fs";
+import sharp from "sharp";
 
-export type WelcomeVariant = {
+// ============================================================================
+// Types & defaults
+// ============================================================================
+
+export type ServerWelcome = {
   enabled: boolean;
-  /** "embed" or "text" */
-  mode: "embed" | "text";
-  text: string | null;
-  title: string | null;
-  description: string | null;
-  color: string | null;
+  /** Single-line text shown under the image. Supports {tokens} and ;emojiname */
+  message: string;
+  /** Optional override of the composited template image URL. Empty = bundled template. */
   imageUrl: string | null;
-  thumbnailUrl: string | null;
-  showAvatar: boolean;
+};
+
+export type DmWelcome = {
+  enabled: boolean;
+  mode: "embed" | "text";
+  /** Single editor — used as content (text mode) or as the embed description (embed mode). */
+  message: string;
 };
 
 export type WelcomeConfig = {
   channelId: string | null;
-  server: WelcomeVariant;
-  dm: WelcomeVariant;
+  server: ServerWelcome;
+  dm: DmWelcome;
 };
 
 const DEFAULTS: WelcomeConfig = {
   channelId: null,
   server: {
     enabled: false,
-    mode: "embed",
-    text: null,
-    title: "Welcome to {server}!",
-    description: "Hey {user_mention}, welcome aboard. You're member **#{membercount}**. Enjoy your stay! \u2728",
-    color: "#5000ff",
+    message: ";fire MRHBA BIK {user_mention} F NIGHT STARS ;fire",
     imageUrl: null,
-    thumbnailUrl: null,
-    showAvatar: true,
   },
   dm: {
     enabled: false,
     mode: "embed",
-    text: null,
-    title: "Welcome to {server}!",
-    description: "Hey {user}, glad you joined **{server}**! Make yourself at home. \uD83C\uDF1F",
-    color: "#5000ff",
-    imageUrl: null,
-    thumbnailUrl: null,
-    showAvatar: true,
+    message:
+      "Welcome to **{server}**, {user}! \uD83C\uDF1F\n\nWe're glad you're here. Take a moment to read the rules and introduce yourself in the community channels. Have fun!",
   },
 };
 
@@ -61,21 +62,29 @@ function mergeConfig(raw: any): WelcomeConfig {
   const base = defaultWelcomeConfig();
   if (!raw || typeof raw !== "object") return base;
   base.channelId = typeof raw.channelId === "string" ? raw.channelId : null;
-  for (const k of ["server", "dm"] as const) {
-    const v = raw[k];
-    if (v && typeof v === "object") {
-      base[k] = {
-        enabled: !!v.enabled,
-        mode: v.mode === "text" ? "text" : "embed",
-        text: typeof v.text === "string" ? v.text : base[k].text,
-        title: typeof v.title === "string" ? v.title : base[k].title,
-        description: typeof v.description === "string" ? v.description : base[k].description,
-        color: typeof v.color === "string" ? v.color : base[k].color,
-        imageUrl: typeof v.imageUrl === "string" ? v.imageUrl : null,
-        thumbnailUrl: typeof v.thumbnailUrl === "string" ? v.thumbnailUrl : null,
-        showAvatar: v.showAvatar === false ? false : true,
-      };
-    }
+  if (raw.server && typeof raw.server === "object") {
+    base.server = {
+      enabled: !!raw.server.enabled,
+      message:
+        typeof raw.server.message === "string"
+          ? raw.server.message
+          : typeof raw.server.description === "string"
+            ? raw.server.description
+            : base.server.message,
+      imageUrl: typeof raw.server.imageUrl === "string" && raw.server.imageUrl ? raw.server.imageUrl : null,
+    };
+  }
+  if (raw.dm && typeof raw.dm === "object") {
+    base.dm = {
+      enabled: !!raw.dm.enabled,
+      mode: raw.dm.mode === "text" ? "text" : "embed",
+      message:
+        typeof raw.dm.message === "string"
+          ? raw.dm.message
+          : typeof raw.dm.description === "string"
+            ? raw.dm.description
+            : base.dm.message,
+    };
   }
   return base;
 }
@@ -104,6 +113,10 @@ export async function saveWelcomeConfig(guildId: string, config: WelcomeConfig):
   );
 }
 
+// ============================================================================
+// Variable + emoji substitution
+// ============================================================================
+
 export function applyVariables(template: string, member: GuildMember): string {
   const guild = member.guild;
   return template
@@ -116,62 +129,155 @@ export function applyVariables(template: string, member: GuildMember): string {
     .replace(/\{member_count\}/gi, String(guild.memberCount));
 }
 
-function parseColor(value: string | null): number {
-  if (!value) return 0x5000ff;
-  const hex = value.replace(/^#/, "").trim();
-  if (!/^[0-9a-f]{6}$/i.test(hex)) return 0x5000ff;
-  return parseInt(hex, 16);
+/** Replaces ;emojiname tokens with actual guild emoji markup if the emoji exists. */
+export function applyEmojis(text: string, guild: Guild): string {
+  return text.replace(/;([a-zA-Z0-9_]{2,32})/g, (full, name: string) => {
+    const e = guild.emojis.cache.find((em) => em.name?.toLowerCase() === name.toLowerCase());
+    if (!e) return full;
+    return e.animated ? `<a:${e.name}:${e.id}>` : `<:${e.name}:${e.id}>`;
+  });
 }
 
-function buildPayload(variant: WelcomeVariant, member: GuildMember) {
-  if (variant.mode === "text") {
-    const content = applyVariables(variant.text ?? variant.description ?? "", member);
-    if (!content.trim()) return null;
-    return { content, allowedMentions: { users: [member.id] } };
-  }
-  const eb = new EmbedBuilder().setColor(parseColor(variant.color));
-  if (variant.title) eb.setTitle(applyVariables(variant.title, member));
-  if (variant.description) eb.setDescription(applyVariables(variant.description, member));
-  if (variant.imageUrl) eb.setImage(variant.imageUrl);
-  if (variant.thumbnailUrl) {
-    eb.setThumbnail(variant.thumbnailUrl);
-  } else if (variant.showAvatar) {
-    eb.setThumbnail(member.user.displayAvatarURL({ extension: "png", size: 256 }));
-  }
-  eb.setFooter({ text: `Night Stars \u2022 ${member.guild.name}` }).setTimestamp();
-  const content = variant.text ? applyVariables(variant.text, member) : undefined;
-  return {
-    content,
-    embeds: [eb],
-    allowedMentions: { users: [member.id] },
-  };
+function applyAll(template: string, member: GuildMember): string {
+  return applyEmojis(applyVariables(template, member), member.guild);
 }
 
-export async function previewWelcome(member: GuildMember, variant: "server" | "dm"): Promise<{ ok: boolean; reason?: string }> {
+// ============================================================================
+// Image compositing — overlay user avatar onto the welcome template
+// ============================================================================
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+// modules/welcome/index.ts → ../../../assets/welcome_template.png
+const TEMPLATE_PATH = path.resolve(__dirname, "../../../assets/welcome_template.png");
+
+// Coordinates detected from the template (1080x1350): red dot center & radius.
+const DOT_CENTER_X = 360;
+const DOT_CENTER_Y = 996;
+const DOT_RADIUS = 199;
+
+let templateBufferCache: Buffer | null = null;
+function loadTemplate(): Buffer {
+  if (!templateBufferCache) {
+    templateBufferCache = fs.readFileSync(TEMPLATE_PATH);
+  }
+  return templateBufferCache;
+}
+
+export async function composeWelcomeImage(member: GuildMember): Promise<Buffer> {
+  const template = loadTemplate();
+  const avatarUrl = member.displayAvatarURL({ extension: "png", size: 512, forceStatic: true });
+  const avatarRes = await fetch(avatarUrl);
+  const avatarBuf = Buffer.from(await avatarRes.arrayBuffer());
+
+  const diameter = DOT_RADIUS * 2;
+  // Resize the avatar to the dot diameter
+  const sizedAvatar = await sharp(avatarBuf).resize(diameter, diameter, { fit: "cover" }).png().toBuffer();
+
+  // Build a circular alpha mask
+  const mask = Buffer.from(
+    `<svg width="${diameter}" height="${diameter}"><circle cx="${DOT_RADIUS}" cy="${DOT_RADIUS}" r="${DOT_RADIUS}" fill="white"/></svg>`,
+  );
+  const circularAvatar = await sharp(sizedAvatar)
+    .composite([{ input: mask, blend: "dest-in" }])
+    .png()
+    .toBuffer();
+
+  const left = DOT_CENTER_X - DOT_RADIUS;
+  const top = DOT_CENTER_Y - DOT_RADIUS;
+  return sharp(template)
+    .composite([{ input: circularAvatar, left, top }])
+    .png()
+    .toBuffer();
+}
+
+// ============================================================================
+// Payload builders & sending
+// ============================================================================
+
+async function buildServerPayload(member: GuildMember, cfg: WelcomeConfig) {
+  const v = cfg.server;
+  const content = applyAll(v.message ?? "", member).trim() || `${applyAll("{user_mention}", member)} just joined!`;
+
+  // Custom remote image overrides the composited template entirely.
+  if (v.imageUrl) {
+    return {
+      content,
+      files: [v.imageUrl],
+      allowedMentions: { users: [member.id] },
+    };
+  }
+
+  try {
+    const buf = await composeWelcomeImage(member);
+    const file = new AttachmentBuilder(buf, { name: "welcome.png" });
+    return {
+      content,
+      files: [file],
+      allowedMentions: { users: [member.id] },
+    };
+  } catch (err) {
+    console.error("[Welcome] image compose failed, sending text only:", err);
+    return {
+      content,
+      allowedMentions: { users: [member.id] },
+    };
+  }
+}
+
+function buildDmPayload(member: GuildMember, cfg: WelcomeConfig) {
+  const v = cfg.dm;
+  const text = applyAll(v.message ?? "", member);
+  if (!text.trim()) return null;
+  if (v.mode === "text") {
+    return { content: text };
+  }
+  const eb = new EmbedBuilder().setColor(0x5000ff).setDescription(text);
+  return { embeds: [eb] };
+}
+
+export async function sendWelcomePreview(
+  member: GuildMember,
+  variant: "server" | "dm",
+): Promise<{ ok: boolean; reason?: string }> {
   const cfg = await getWelcomeConfig(member.guild.id);
-  const v = cfg[variant];
-  const payload = buildPayload(v, member);
-  if (!payload) return { ok: false, reason: "Empty content" };
   if (variant === "server") {
     if (!cfg.channelId) return { ok: false, reason: "No welcome channel set" };
     const ch = member.guild.channels.cache.get(cfg.channelId);
-    if (!(ch instanceof TextChannel || ch instanceof NewsChannel)) return { ok: false, reason: "Welcome channel not found" };
-    await ch.send(payload);
-  } else {
-    try {
-      await member.send(payload);
-    } catch {
-      return { ok: false, reason: "Member has DMs closed" };
+    if (!(ch instanceof TextChannel || ch instanceof NewsChannel)) {
+      return { ok: false, reason: "Welcome channel not found" };
     }
+    const payload = await buildServerPayload(member, cfg);
+    await ch.send(payload);
+    return { ok: true };
   }
-  return { ok: true };
+  const payload = buildDmPayload(member, cfg);
+  if (!payload) return { ok: false, reason: "Empty DM message" };
+  try {
+    await member.send(payload);
+    return { ok: true };
+  } catch {
+    return { ok: false, reason: "Member has DMs closed" };
+  }
 }
+
+// ============================================================================
+// Join handler — fires once per member join
+// ============================================================================
+
+const sentRecently = new Set<string>();
 
 export function registerWelcomeModule(client: Client) {
   client.on("guildMemberAdd", async (member: GuildMember) => {
     try {
       if (member.user.bot) return;
       if (!isMainGuild(member.guild.id)) return;
+
+      // Dedupe per process (Discord shouldn't fire twice but be safe).
+      const key = `${member.guild.id}:${member.id}`;
+      if (sentRecently.has(key)) return;
+      sentRecently.add(key);
+      setTimeout(() => sentRecently.delete(key), 60_000);
+
       const cfg = await getWelcomeConfig(member.guild.id);
 
       if (cfg.server.enabled && cfg.channelId) {
@@ -179,10 +285,8 @@ export function registerWelcomeModule(client: Client) {
         if (ch instanceof TextChannel || ch instanceof NewsChannel) {
           const me = member.guild.members.me;
           if (me?.permissionsIn(ch).has("SendMessages")) {
-            const payload = buildPayload(cfg.server, member);
-            if (payload) {
-              await ch.send(payload).catch((err) => console.error("[Welcome] server send failed:", err?.message ?? err));
-            }
+            const payload = await buildServerPayload(member, cfg);
+            await ch.send(payload).catch((err) => console.error("[Welcome] server send failed:", err?.message ?? err));
           } else {
             console.warn(`[Welcome] Missing SendMessages in welcome channel ${ch.id}`);
           }
@@ -192,12 +296,12 @@ export function registerWelcomeModule(client: Client) {
       }
 
       if (cfg.dm.enabled) {
-        const payload = buildPayload(cfg.dm, member);
+        const payload = buildDmPayload(member, cfg);
         if (payload) {
           try {
             await member.send(payload);
           } catch (err: any) {
-            console.warn(`[Welcome] DM to ${member.user.tag} failed (likely DMs closed): ${err?.message ?? err}`);
+            console.warn(`[Welcome] DM to ${member.user.tag} failed: ${err?.message ?? err}`);
           }
         }
       }

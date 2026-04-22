@@ -20,15 +20,17 @@ import {
   WelcomeConfig,
   defaultWelcomeConfig,
   getWelcomeConfig,
-  previewWelcome,
   saveWelcomeConfig,
+  sendWelcomePreview,
 } from "../modules/welcome/index.js";
 
 const TITLE_COLOR = 0x5000ff;
 
 function summary(cfg: WelcomeConfig) {
   const ch = cfg.channelId ? `<#${cfg.channelId}>` : "_not set_";
-  const fmt = (label: string, on: boolean) => `${on ? "\u2705" : "\u26AA"} **${label}**`;
+  const dot = (on: boolean) => (on ? "\u2705" : "\u26AA");
+  const truncate = (s: string, n: number) => (s.length > n ? s.slice(0, n - 1) + "\u2026" : s);
+
   return new EmbedBuilder()
     .setColor(TITLE_COLOR)
     .setTitle("\uD83D\uDC4B Welcome System")
@@ -36,14 +38,15 @@ function summary(cfg: WelcomeConfig) {
       [
         `**Welcome channel:** ${ch}`,
         "",
-        fmt("Server welcome", cfg.server.enabled),
-        `\u2002\u2002Mode: \`${cfg.server.mode}\` \u2014 Title: ${cfg.server.title ? "\u2705" : "\u274C"} \u2014 Image: ${cfg.server.imageUrl ? "\u2705" : "\u274C"}`,
+        `${dot(cfg.server.enabled)} **Server welcome** \u2014 message-only (with picture)`,
+        `\u2002\u2002Picture: ${cfg.server.imageUrl ? "custom URL" : "default template"}`,
+        `\u2002\u2002Message: \`${truncate(cfg.server.message || "(empty)", 80)}\``,
         "",
-        fmt("DM welcome", cfg.dm.enabled),
-        `\u2002\u2002Mode: \`${cfg.dm.mode}\` \u2014 Title: ${cfg.dm.title ? "\u2705" : "\u274C"} \u2014 Image: ${cfg.dm.imageUrl ? "\u2705" : "\u274C"}`,
+        `${dot(cfg.dm.enabled)} **DM welcome** \u2014 mode: \`${cfg.dm.mode}\``,
+        `\u2002\u2002Message: \`${truncate(cfg.dm.message || "(empty)", 80)}\``,
         "",
-        "**Variables you can use in any text field:**",
-        "`{user}` `{user_mention}` `{user.tag}` `{user.name}` `{server}` `{membercount}`",
+        "**Variables:** `{user}` `{user_mention}` `{user.tag}` `{user.name}` `{server}` `{membercount}`",
+        "**Emojis:** type `;emojiname` (e.g. `;fire`) and the bot replaces it with the matching server emoji.",
       ].join("\n"),
     )
     .setFooter({ text: "Night Stars \u2022 Welcome" });
@@ -62,15 +65,23 @@ function rows(cfg: WelcomeConfig) {
       .setCustomId("wc_edit")
       .setPlaceholder("Edit a welcome message")
       .addOptions(
-        { label: "Edit Server welcome", value: "server", description: "Embed/text shown in the welcome channel" },
-        { label: "Edit DM welcome", value: "dm", description: "Embed/text sent to the new member's DMs" },
+        { label: "Edit Server welcome (picture + message)", value: "server" },
+        { label: "Edit DM welcome (message)", value: "dm" },
       ),
   );
   const toggleRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("wc_toggle_server").setStyle(cfg.server.enabled ? ButtonStyle.Success : ButtonStyle.Secondary).setLabel(`Server: ${cfg.server.enabled ? "ON" : "OFF"}`),
-    new ButtonBuilder().setCustomId("wc_toggle_dm").setStyle(cfg.dm.enabled ? ButtonStyle.Success : ButtonStyle.Secondary).setLabel(`DM: ${cfg.dm.enabled ? "ON" : "OFF"}`),
-    new ButtonBuilder().setCustomId("wc_mode_server").setStyle(ButtonStyle.Secondary).setLabel(`Server mode: ${cfg.server.mode}`),
-    new ButtonBuilder().setCustomId("wc_mode_dm").setStyle(ButtonStyle.Secondary).setLabel(`DM mode: ${cfg.dm.mode}`),
+    new ButtonBuilder()
+      .setCustomId("wc_toggle_server")
+      .setStyle(cfg.server.enabled ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setLabel(`Server: ${cfg.server.enabled ? "ON" : "OFF"}`),
+    new ButtonBuilder()
+      .setCustomId("wc_toggle_dm")
+      .setStyle(cfg.dm.enabled ? ButtonStyle.Success : ButtonStyle.Secondary)
+      .setLabel(`DM: ${cfg.dm.enabled ? "ON" : "OFF"}`),
+    new ButtonBuilder()
+      .setCustomId("wc_mode_dm")
+      .setStyle(ButtonStyle.Secondary)
+      .setLabel(`DM mode: ${cfg.dm.mode}`),
   );
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("wc_test_server").setStyle(ButtonStyle.Primary).setLabel("Test Server"),
@@ -95,7 +106,9 @@ export async function openWelcomePanel(interaction: ChatInputCommandInteraction 
   }
 }
 
-async function refresh(interaction: ButtonInteraction | ChannelSelectMenuInteraction | StringSelectMenuInteraction | ModalSubmitInteraction) {
+async function refresh(
+  interaction: ButtonInteraction | ChannelSelectMenuInteraction | StringSelectMenuInteraction | ModalSubmitInteraction,
+) {
   const cfg = await getWelcomeConfig(interaction.guildId!);
   const payload = { embeds: [summary(cfg)], components: rows(cfg) };
   if (interaction.isModalSubmit()) {
@@ -135,12 +148,6 @@ export async function handleWelcomeButton(interaction: ButtonInteraction) {
     await refresh(interaction);
     return;
   }
-  if (id === "wc_mode_server") {
-    cfg.server.mode = cfg.server.mode === "embed" ? "text" : "embed";
-    await saveWelcomeConfig(interaction.guildId, cfg);
-    await refresh(interaction);
-    return;
-  }
   if (id === "wc_mode_dm") {
     cfg.dm.mode = cfg.dm.mode === "embed" ? "text" : "embed";
     await saveWelcomeConfig(interaction.guildId, cfg);
@@ -155,7 +162,7 @@ export async function handleWelcomeButton(interaction: ButtonInteraction) {
   if (id === "wc_test_server" || id === "wc_test_dm") {
     const variant = id === "wc_test_server" ? "server" : "dm";
     const member = await interaction.guild!.members.fetch(interaction.user.id);
-    const result = await previewWelcome(member, variant);
+    const result = await sendWelcomePreview(member, variant);
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
@@ -173,53 +180,48 @@ export async function handleWelcomeStringSelect(interaction: StringSelectMenuInt
   if (interaction.customId !== "wc_edit") return;
   const variant = interaction.values[0] === "dm" ? "dm" : "server";
   const cfg = await getWelcomeConfig(interaction.guildId);
-  const v = cfg[variant];
+
+  if (variant === "server") {
+    const v = cfg.server;
+    const modal = new ModalBuilder()
+      .setCustomId("wc_modal_server")
+      .setTitle("Edit Server Welcome")
+      .addComponents(
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId("message")
+            .setLabel("Message under the picture")
+            .setStyle(TextInputStyle.Paragraph)
+            .setRequired(true)
+            .setMaxLength(500)
+            .setValue(v.message ?? ""),
+        ),
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId("imageUrl")
+            .setLabel("Picture URL (blank = use default template)")
+            .setStyle(TextInputStyle.Short)
+            .setRequired(false)
+            .setValue(v.imageUrl ?? ""),
+        ),
+      );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  const v = cfg.dm;
   const modal = new ModalBuilder()
-    .setCustomId(`wc_modal_${variant}`)
-    .setTitle(`Edit ${variant === "dm" ? "DM" : "Server"} Welcome`)
+    .setCustomId("wc_modal_dm")
+    .setTitle("Edit DM Welcome")
     .addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
-          .setCustomId("title")
-          .setLabel("Title (embed only)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setMaxLength(256)
-          .setValue(v.title ?? ""),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("description")
-          .setLabel("Body / message")
+          .setCustomId("message")
+          .setLabel("DM message (a bit longer is OK)")
           .setStyle(TextInputStyle.Paragraph)
-          .setRequired(false)
+          .setRequired(true)
           .setMaxLength(2000)
-          .setValue(v.description ?? ""),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("color")
-          .setLabel("Embed color hex (e.g. #5000ff)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setMaxLength(7)
-          .setValue(v.color ?? ""),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("imageUrl")
-          .setLabel("Big image URL (optional)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setValue(v.imageUrl ?? ""),
-      ),
-      new ActionRowBuilder<TextInputBuilder>().addComponents(
-        new TextInputBuilder()
-          .setCustomId("thumbnailUrl")
-          .setLabel("Thumbnail URL (blank = user avatar)")
-          .setStyle(TextInputStyle.Short)
-          .setRequired(false)
-          .setValue(v.thumbnailUrl ?? ""),
+          .setValue(v.message ?? ""),
       ),
     );
   await interaction.showModal(modal);
@@ -227,24 +229,36 @@ export async function handleWelcomeStringSelect(interaction: StringSelectMenuInt
 
 export async function handleWelcomeModalSubmit(interaction: ModalSubmitInteraction) {
   if (!interaction.guildId) return;
-  const variant = interaction.customId === "wc_modal_dm" ? "dm" : "server";
   const cfg = await getWelcomeConfig(interaction.guildId);
-  const v = cfg[variant];
-  v.title = interaction.fields.getTextInputValue("title").trim() || null;
-  v.description = interaction.fields.getTextInputValue("description").trim() || null;
-  const color = interaction.fields.getTextInputValue("color").trim();
-  v.color = color || null;
-  const img = interaction.fields.getTextInputValue("imageUrl").trim();
-  v.imageUrl = img || null;
-  const thumb = interaction.fields.getTextInputValue("thumbnailUrl").trim();
-  v.thumbnailUrl = thumb || null;
-  v.text = v.description; // for text mode, description doubles as the message
-  await saveWelcomeConfig(interaction.guildId, cfg);
-  await interaction.reply({
-    embeds: [new EmbedBuilder().setColor(0x00c851).setDescription(`\u2705 ${variant === "dm" ? "DM" : "Server"} welcome updated.`)],
-    ephemeral: true,
-  });
+
+  if (interaction.customId === "wc_modal_server") {
+    const message = interaction.fields.getTextInputValue("message").trim();
+    const imageUrl = interaction.fields.getTextInputValue("imageUrl").trim();
+    cfg.server.message = message;
+    cfg.server.imageUrl = imageUrl || null;
+    await saveWelcomeConfig(interaction.guildId, cfg);
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0x00c851).setDescription("\u2705 Server welcome updated.")],
+      ephemeral: true,
+    });
+    return;
+  }
+  if (interaction.customId === "wc_modal_dm") {
+    const message = interaction.fields.getTextInputValue("message").trim();
+    cfg.dm.message = message;
+    await saveWelcomeConfig(interaction.guildId, cfg);
+    await interaction.reply({
+      embeds: [new EmbedBuilder().setColor(0x00c851).setDescription("\u2705 DM welcome updated.")],
+      ephemeral: true,
+    });
+    return;
+  }
 }
+
+// ============================================================================
+// Legacy slash-command handlers (kept for backward compatibility — Clear & Move
+// are now configured via /general Page 2, but the old commands still work)
+// ============================================================================
 
 export async function handleSetupMoveCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
