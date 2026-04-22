@@ -13,6 +13,7 @@ import { db } from "@workspace/db";
 import { pvsVoicesTable, pvsKeysTable, botConfigTable } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
+import { sendMemberHelp } from "../help/index.js";
 
 async function getGuildPrefix(guildId: string): Promise<string> {
   const [cfg] = await db
@@ -214,9 +215,10 @@ export function registerPVSModule(client: Client) {
         await handleKick(message, member, content.slice(5).trim());
       } else if (content.toLowerCase() === "help") {
         try {
-          const embed = await getMemberHelpEmbed(message.guild!.id);
-          const sent = await message.channel.send({ embeds: [embed] });
-        } catch {}
+          await sendMemberHelp(message);
+        } catch (err) {
+          console.error("[Help] member help error:", err);
+        }
       }
     } catch (err) {
       console.error("[PVS] Unhandled error in messageCreate:", err);

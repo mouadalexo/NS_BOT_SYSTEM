@@ -88,6 +88,7 @@ import {
   handleSetupClearCommand,
 } from "./welcome.js";
 import { handleMasterSetupButton } from "./master.js";
+import { sendStaffHelp, handleHelpButton } from "../modules/help/index.js";
 
 export function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
   return new EmbedBuilder()
@@ -431,13 +432,16 @@ export async function registerPanelCommands(client: Client) {
           await interaction.reply({ embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("\u274C You don't have permission to use `/help`.")], ephemeral: true });
           return;
         }
-        const { pvs, mgr, ctp, ann } = await getGuildPrefixes(interaction.guildId!);
-        await interaction.reply({ embeds: [buildAllCommandsEmbed(pvs, mgr, ctp, ann)], ephemeral: true });
+        await sendStaffHelp(interaction as ChatInputCommandInteraction);
       }
       return;
     }
 
     if (interaction.isButton()) {
+      if (interaction.customId.startsWith("help_")) {
+        try { await handleHelpButton(interaction as ButtonInteraction); } catch (err) { console.error("Help button error:", err); }
+        return;
+      }
       const panelIds = [
         "pp_save", "pp_reset",
         "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
