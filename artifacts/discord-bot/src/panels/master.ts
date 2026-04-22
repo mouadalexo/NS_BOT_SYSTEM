@@ -6,9 +6,6 @@ import {
   EmbedBuilder,
   Message,
   PermissionsBitField,
-  TextChannel,
-  NewsChannel,
-  ThreadChannel,
 } from "discord.js";
 import { openPvsPanel } from "./pvs.js";
 import { openCtpManagePanel } from "./ctp.js";
@@ -124,19 +121,24 @@ export function buildMasterSetupRows(): ActionRowBuilder<ButtonBuilder>[] {
 }
 
 export async function sendMasterSetupPanel(message: Message): Promise<void> {
-  const channel = message.channel;
-  if (!(channel instanceof TextChannel || channel instanceof NewsChannel || channel instanceof ThreadChannel)) {
+  const channel = message.channel as any;
+  if (!channel || typeof channel.send !== "function") {
+    console.log("[MasterSetup] channel cannot send:", channel?.type);
     return;
   }
   if (!message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
+    console.log("[MasterSetup] user is not admin, ignoring");
     return;
   }
 
-  await message.delete().catch(() => {});
+  await message.delete().catch((err) => console.log("[MasterSetup] delete trigger failed:", err?.message));
   const sent = await channel
     .send({ embeds: [buildMasterSetupEmbed()], components: buildMasterSetupRows() })
-    .catch(() => null);
-  if (sent) setTimeout(() => sent.delete().catch(() => {}), PANEL_TTL_MS);
+    .catch((err) => { console.error("[MasterSetup] panel send failed:", err); return null; });
+  if (sent) {
+    console.log("[MasterSetup] panel posted, msgId=", sent.id);
+    setTimeout(() => sent.delete().catch(() => {}), PANEL_TTL_MS);
+  }
 }
 
 async function denyIfNotAdmin(interaction: ButtonInteraction): Promise<boolean> {
