@@ -129,17 +129,6 @@ export async function sendMasterSetupPanel(message: Message): Promise<void> {
     return;
   }
   if (!message.member?.permissions.has(PermissionsBitField.Flags.Administrator)) {
-    const denied = await channel
-      .send({
-        embeds: [
-          new EmbedBuilder()
-            .setColor(0xff4d4d)
-            .setDescription("\u274C You need **Administrator** permission to open the setup panel."),
-        ],
-      })
-      .catch(() => null);
-    if (denied) setTimeout(() => denied.delete().catch(() => {}), 5000);
-    await message.delete().catch(() => {});
     return;
   }
 

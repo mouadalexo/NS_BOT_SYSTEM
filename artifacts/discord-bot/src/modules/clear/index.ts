@@ -3,9 +3,6 @@ import {
   EmbedBuilder,
   Message,
   PermissionsBitField,
-  TextChannel,
-  NewsChannel,
-  ThreadChannel,
 } from "discord.js";
 import { pool } from "@workspace/db";
 import { isMainGuild } from "../../utils/guildFilter.js";
@@ -22,7 +19,8 @@ function embed(color: number, description: string) {
     .setTimestamp();
 }
 
-async function sendTemp(channel: TextChannel | NewsChannel | ThreadChannel, eb: EmbedBuilder, ttl = CONFIRM_TTL) {
+async function sendTemp(channel: any, eb: EmbedBuilder, ttl = CONFIRM_TTL) {
+  if (!channel || typeof channel.send !== "function") return;
   const sent = await channel.send({ embeds: [eb] }).catch(() => null);
   if (sent) setTimeout(() => sent.delete().catch(() => {}), ttl);
 }
@@ -51,8 +49,9 @@ export function registerClearModule(client: Client) {
       const match = message.content.trim().match(TRIGGER_RE);
       if (!match) return;
 
-      const channel = message.channel;
-      if (!(channel instanceof TextChannel || channel instanceof NewsChannel || channel instanceof ThreadChannel)) {
+      const channel = message.channel as any;
+      if (!channel || typeof channel.bulkDelete !== "function") {
+        console.log("[Clear] Triggered but channel does not support bulkDelete:", channel?.type);
         return;
       }
 
