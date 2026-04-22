@@ -15,7 +15,6 @@ import { eq } from "drizzle-orm";
 
 const COLOR = 0x5000ff;
 const FOOTER = "Night Stars \u2022 NS Bot";
-const PAGE_SIZE = 6;
 
 type Command = { syntax: string; desc: string };
 type Prefixes = { pvs: string; mgr: string; ctp: string; ann: string };
@@ -194,41 +193,26 @@ function buildMainComponents(scope: "m" | "s", cats: CategoryDef[], p: Prefixes,
   ];
 }
 
-function buildCategoryEmbed(cat: CategoryDef, p: Prefixes, page: number): { embed: EmbedBuilder; totalPages: number } {
+function buildCategoryEmbed(cat: CategoryDef, p: Prefixes): EmbedBuilder {
   const cmds = cat.buildCommands(p);
-  const totalPages = Math.max(1, Math.ceil(cmds.length / PAGE_SIZE));
-  const safePage = Math.min(Math.max(1, page), totalPages);
-  const slice = cmds.slice((safePage - 1) * PAGE_SIZE, safePage * PAGE_SIZE);
-  const desc = slice.map((c) => `\`${c.syntax}\`\n\u2502 ${c.desc}`).join("\n\n");
-  const embed = new EmbedBuilder()
+  const desc = cmds.map((c) => `\`${c.syntax}\`\n\u2502 ${c.desc}`).join("\n\n");
+  return new EmbedBuilder()
     .setColor(COLOR)
     .setTitle(`${cat.emoji} ${cat.label}`)
     .setDescription(desc || "_No commands._")
-    .setFooter({ text: `Page ${safePage}/${totalPages} \u2022 ${FOOTER}` });
-  return { embed, totalPages };
+    .setFooter({ text: FOOTER });
 }
 
-function buildCategoryComponents(scope: "m" | "s", catKey: string, page: number, totalPages: number, closeId: string) {
-  const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`help_${scope}_pg_${catKey}_${page - 1}`)
-      .setEmoji("\u2B05\uFE0F")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page <= 1),
-    new ButtonBuilder()
-      .setCustomId(`help_${scope}_pg_${catKey}_${page + 1}`)
-      .setEmoji("\u27A1\uFE0F")
-      .setStyle(ButtonStyle.Secondary)
-      .setDisabled(page >= totalPages),
-  );
-  const ctrlRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`help_${scope}_back`)
-      .setLabel("Select A Command Category!")
-      .setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId(closeId).setLabel("Close").setEmoji("\u2716\uFE0F").setStyle(ButtonStyle.Danger),
-  );
-  return [navRow, ctrlRow];
+function buildCategoryComponents(scope: "m" | "s", closeId: string) {
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`help_${scope}_back`)
+        .setLabel("Select A Command Category!")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(closeId).setLabel("Close").setEmoji("\u2716\uFE0F").setStyle(ButtonStyle.Danger),
+    ),
+  ];
 }
 
 // ── ENTRY POINTS ────────────────────────────────────────────────────────────
@@ -278,11 +262,10 @@ export async function handleHelpSelect(interaction: StringSelectMenuInteraction)
   const cat = cats.find((c) => c.key === key);
   if (!cat) return;
   const p = await getPrefixes(interaction.guildId!);
-  const { embed, totalPages } = buildCategoryEmbed(cat, p, 1);
   const closeId = deriveCloseId(scope, interaction);
   await interaction.update({
-    embeds: [embed],
-    components: buildCategoryComponents(scope, cat.key, 1, totalPages, closeId),
+    embeds: [buildCategoryEmbed(cat, p)],
+    components: buildCategoryComponents(scope, closeId),
   });
 }
 
@@ -342,22 +325,4 @@ export async function handleHelpButton(interaction: ButtonInteraction): Promise<
     return;
   }
 
-  // Pagination: help_<scope>_pg_<catKey>_<pageNum>
-  const pgPrefix = `help_${scope}_pg_`;
-  if (id.startsWith(pgPrefix)) {
-    const rest = id.slice(pgPrefix.length);
-    const lastUnderscore = rest.lastIndexOf("_");
-    if (lastUnderscore < 0) return;
-    const catKey = rest.slice(0, lastUnderscore);
-    const page = parseInt(rest.slice(lastUnderscore + 1), 10);
-    const cat = cats.find((c) => c.key === catKey);
-    if (!cat || isNaN(page)) return;
-    const { embed, totalPages } = buildCategoryEmbed(cat, p, page);
-    const closeId = deriveCloseId(scope, interaction);
-    await interaction.update({
-      embeds: [embed],
-      components: buildCategoryComponents(scope, catKey, Math.min(Math.max(1, page), totalPages), totalPages, closeId),
-    });
-    return;
-  }
 }
