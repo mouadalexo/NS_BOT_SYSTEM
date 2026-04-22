@@ -10,8 +10,16 @@ import { db, botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
-const PREFIX = "=";
 const EVENT_COLOR = 0xff8000;
+
+async function getStagePrefix(guildId: string): Promise<string> {
+  const rows = await db
+    .select({ pvsPrefix: botConfigTable.pvsPrefix })
+    .from(botConfigTable)
+    .where(eq(botConfigTable.guildId, guildId))
+    .limit(1);
+  return rows[0]?.pvsPrefix ?? "=";
+}
 
 function reply(message: Message, description: string) {
   const embed = new EmbedBuilder()
@@ -123,6 +131,7 @@ export function registerStageLockModule(client: Client) {
     try {
       if (!message.guild || message.author.bot) return;
       if (!isMainGuild(message.guild.id)) return;
+      const PREFIX = await getStagePrefix(message.guild.id);
       if (!message.content.startsWith(PREFIX)) return;
 
       const cmd = message.content.slice(PREFIX.length).trim().split(/\s+/)[0]?.toLowerCase();

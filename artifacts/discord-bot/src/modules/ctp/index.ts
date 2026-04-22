@@ -28,15 +28,116 @@ export function registerCTPModule(client: Client) {
       const content = message.content.toLowerCase().trim();
       // CTP category: exactly "tag" (no prefix, nothing else with it)
       const isCTPTag = content === "tag";
+      // Cooldown check: exactly "tagcd" or "tag cd"
+      const isTagCd = !isCTPTag && (content === "tagcd" || content === "tag cd");
       // One Tap (temp voice): "tag <gamename>" — must be exactly two tokens, no extras
-      const tapMatch = !isCTPTag ? content.match(/^tag\s+(\S+)\s*$/) : null;
+      const tapMatch = !isCTPTag && !isTagCd ? content.match(/^tag\s+(\S+)\s*$/) : null;
       const isTempTag = !!tapMatch;
 
-      if (!isCTPTag && !isTempTag) return;
+      if (!isCTPTag && !isTempTag && !isTagCd) return;
 
       const member = message.member;
       if (!member) return;
       const guildId = message.guild.id;
+
+      // ── tagcd / tag cd — show remaining cooldown ──────────────────────────
+      if (isTagCd) {
+        const voiceChannel = member.voice.channel;
+        if (!voiceChannel || !voiceChannel.parentId) {
+          const notice = await message.channel.send({
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Join a game voice channel to check the tag cooldown.")],
+          });
+          setTimeout(() => notice.delete().catch(() => {}), 6000);
+          return;
+        }
+        const parentId = voiceChannel.parentId;
+
+        // Try CTP category first
+        const [ctpCfg] = await db
+          .select()
+          .from(ctpCategoriesTable)
+          .where(and(
+            eq(ctpCategoriesTable.guildId, guildId),
+            eq(ctpCategoriesTable.categoryId, parentId),
+            eq(ctpCategoriesTable.enabled, 1),
+          ))
+          .limit(1);
+
+        if (ctpCfg) {
+          const [cd] = await db
+            .select()
+            .from(ctpCooldownsTable)
+            .where(and(
+              eq(ctpCooldownsTable.guildId, guildId),
+              eq(ctpCooldownsTable.categoryId, ctpCfg.categoryId),
+            ))
+            .limit(1);
+          const now = Date.now();
+          const elapsed = cd ? (now - cd.lastUsedAt.getTime()) / 1000 : ctpCfg.cooldownSeconds;
+          const remaining = Math.max(0, Math.ceil(ctpCfg.cooldownSeconds - elapsed));
+          const desc = remaining > 0
+            ? `**${ctpCfg.gameName}** tag cooldown: **${formatSeconds(remaining)}** remaining.`
+            : `**${ctpCfg.gameName}** tag is **ready** to use.`;
+          const notice = await message.channel.send({
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription(desc).setFooter({ text: `Cooldown: ${formatSeconds(ctpCfg.cooldownSeconds)} \u2022 Night Stars CTP` })],
+          });
+          setTimeout(() => notice.delete().catch(() => {}), 8000);
+          message.delete().catch(() => {});
+          return;
+        }
+
+        // Otherwise, check temp-voice category — list every game's remaining cd
+        const [tvCfg] = await db
+          .select()
+          .from(ctpTempVoiceConfigTable)
+          .where(eq(ctpTempVoiceConfigTable.guildId, guildId))
+          .limit(1);
+
+        if (tvCfg && tvCfg.enabled && tvCfg.categoryId === parentId) {
+          const tvGames = await db
+            .select()
+            .from(ctpTempVoiceGamesTable)
+            .where(eq(ctpTempVoiceGamesTable.guildId, guildId));
+          if (!tvGames.length) {
+            const notice = await message.channel.send({
+              embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("No one-tap games configured yet.")],
+            });
+            setTimeout(() => notice.delete().catch(() => {}), 6000);
+            return;
+          }
+          const cds = await db
+            .select()
+            .from(ctpTempVoiceCooldownsTable)
+            .where(eq(ctpTempVoiceCooldownsTable.guildId, guildId));
+          const now = Date.now();
+          const lines = tvGames.map((g) => {
+            const cd = cds.find((c) => c.roleId === g.roleId);
+            const elapsed = cd ? (now - cd.lastUsedAt.getTime()) / 1000 : tvCfg.cooldownSeconds;
+            const remaining = Math.max(0, Math.ceil(tvCfg.cooldownSeconds - elapsed));
+            return remaining > 0
+              ? `\u23F3 **${g.gameName}** \u2014 ${formatSeconds(remaining)} left`
+              : `\u2705 **${g.gameName}** \u2014 ready`;
+          });
+          const notice = await message.channel.send({
+            embeds: [
+              new EmbedBuilder()
+                .setColor(0x5000ff)
+                .setTitle("One-Tap Cooldowns")
+                .setDescription(lines.join("\n"))
+                .setFooter({ text: `Cooldown: ${formatSeconds(tvCfg.cooldownSeconds)} \u2022 Night Stars CTP` }),
+            ],
+          });
+          setTimeout(() => notice.delete().catch(() => {}), 12000);
+          message.delete().catch(() => {});
+          return;
+        }
+
+        const notice = await message.channel.send({
+          embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("This voice channel's category isn't configured for Call to Play.")],
+        });
+        setTimeout(() => notice.delete().catch(() => {}), 6000);
+        return;
+      }
 
       // ── -tag in CTP game category ─────────────────────────────────────────
       if (isCTPTag) {
