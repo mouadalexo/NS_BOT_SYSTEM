@@ -13,9 +13,7 @@ const CONFIRM_TTL = 5000;
 function embed(color: number, description: string) {
   return new EmbedBuilder()
     .setColor(color)
-    .setDescription(description)
-    .setFooter({ text: "Night Stars \u2022 Move" })
-    .setTimestamp();
+    .setDescription(description);
 }
 
 async function sendTemp(message: Message, eb: EmbedBuilder) {
@@ -104,7 +102,7 @@ export function registerMoveModule(client: Client) {
         await target.voice.setChannel(actorVoice, `Move by ${actor.user.tag} via aji`);
         await sendTemp(
           message,
-          embed(0x00c851, `\u2705 Moved **${target.displayName}** to **${actorVoice.name}**.`),
+          embed(0xffd700, `\u2705 Moved **${target.displayName}** to **${actorVoice.name}**.`),
         );
       } catch (err: any) {
         console.error("[Move] setChannel failed:", err);

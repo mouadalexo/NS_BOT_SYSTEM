@@ -14,9 +14,7 @@ const CONFIRM_TTL = 4000;
 function embed(color: number, description: string) {
   return new EmbedBuilder()
     .setColor(color)
-    .setDescription(description)
-    .setFooter({ text: "Night Stars \u2022 Clear" })
-    .setTimestamp();
+    .setDescription(description);
 }
 
 async function sendTemp(channel: any, eb: EmbedBuilder, ttl = CONFIRM_TTL) {
@@ -106,7 +104,7 @@ export function registerClearModule(client: Client) {
       const note = truncated ? ` (capped at ${MAX_DELETE} \u2014 Discord limit)` : "";
       await sendTemp(
         channel,
-        embed(0x00c851, `\u2705 Cleared **${deleted}** message${deleted === 1 ? "" : "s"}${note}.`),
+        embed(0x00008b, `\u2705 Cleared **${deleted}** message${deleted === 1 ? "" : "s"}${note}.`),
         4000,
       );
     } catch (err) {
