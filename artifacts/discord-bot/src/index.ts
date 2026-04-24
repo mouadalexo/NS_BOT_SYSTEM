@@ -16,6 +16,7 @@ import { registerJailModule } from "./modules/jail/index.js";
 import { registerRoleGiverModule } from "./modules/role-giver/index.js";
 import { registerAvatarModule } from "./modules/avatar/index.js";
 import { registerAutoDeleteModule } from "./modules/auto-delete/index.js";
+import { registerAutoModModule } from "./modules/auto-mod/index.js";
 import { registerStageLockModule } from "./modules/stage-lock/index.js";
 import { registerMoveModule } from "./modules/move/index.js";
 import { registerClearModule } from "./modules/clear/index.js";
@@ -222,6 +223,9 @@ async function startBot(token: string): Promise<void> {
       Partials.GuildMember,
     ],
   });
+  // Each module registers its own messageCreate listener — bump the cap so Node
+  // doesn't print a MaxListenersExceededWarning as more modules are added.
+  client.setMaxListeners(25);
 
   client.once("clientReady", async () => {
     console.log(`[Bot] Online as ${client.user?.tag}`);
@@ -283,6 +287,7 @@ async function startBot(token: string): Promise<void> {
     registerRoleGiverModule(client);
     registerAvatarModule(client);
     registerAutoDeleteModule(client).catch((err) => console.error("[Bot] AutoDelete init error:", err));
+    registerAutoModModule(client).catch((err) => console.error("[Bot] AutoMod init error:", err));
     registerStageLockModule(client);
     registerMoveModule(client);
     registerClearModule(client);

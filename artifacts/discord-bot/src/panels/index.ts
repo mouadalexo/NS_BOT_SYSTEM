@@ -88,6 +88,14 @@ import {
   handleSetupClearCommand,
 } from "./welcome.js";
 import { handleMasterSetupButton } from "./master.js";
+import {
+  openAutoModPanel,
+  handleAutoModButton,
+  handleAutoModRoleSelect,
+  handleAutoModChannelSelect,
+  handleAutoModStringSelect,
+  handleAutoModModal,
+} from "./automod.js";
 import { sendStaffHelp, handleHelpButton, handleHelpSelect } from "../modules/help/index.js";
 
 export function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!") {
@@ -331,6 +339,12 @@ export async function registerPanelCommands(client: Client) {
     .addSubcommand((sub) => sub.setName("setup").setDescription("Open the welcome system setup panel"))
     .toJSON();
 
+  const automodCommand = new SlashCommandBuilder()
+    .setName("automod")
+    .setDescription("Open the Auto-Mod panel (links, spam, channel modes, auto-responses)")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .toJSON();
+
   const buildRoleSet = (builder: SlashCommandBuilder) =>
     builder
       .addRoleOption((o) => o.setName("role-1").setDescription("Allowed role").setRequired(true))
@@ -358,7 +372,7 @@ export async function registerPanelCommands(client: Client) {
   const registerForGuild = async (guildId: string, guildName: string) => {
     try {
       await rest.put(Routes.applicationGuildCommands(client.user!.id, guildId), {
-        body: [setupCommand, setupJailCommand, annCommand, generalCommand, roleGiverCommand, welcomeCommand, setupMoveCommand, setupClearCommand, helpCommand, pingCommand, prefixCommand],
+        body: [setupCommand, setupJailCommand, annCommand, generalCommand, roleGiverCommand, welcomeCommand, automodCommand, setupMoveCommand, setupClearCommand, helpCommand, pingCommand, prefixCommand],
       });
       console.log(`Registered slash commands for guild: ${guildName}`);
     } catch (err) {
@@ -398,6 +412,15 @@ export async function registerPanelCommands(client: Client) {
           });
         } else {
           await openWelcomePanel(interaction as ChatInputCommandInteraction);
+        }
+      } else if (name === "automod") {
+        if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
+          await interaction.reply({
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("\u274C You need **Administrator** permission to use this.")],
+            ephemeral: true,
+          });
+        } else {
+          await openAutoModPanel(interaction as ChatInputCommandInteraction);
         }
       } else if (name === "setup-move") {
         await handleSetupMoveCommand(interaction as ChatInputCommandInteraction);
@@ -455,6 +478,10 @@ export async function registerPanelCommands(client: Client) {
         try { await handleWelcomeButton(interaction as ButtonInteraction); } catch (err) { console.error("Welcome button error:", err); }
         return;
       }
+      if (interaction.customId.startsWith("am_")) {
+        try { await handleAutoModButton(interaction as ButtonInteraction); } catch (err) { console.error("AutoMod button error:", err); }
+        return;
+      }
       if (interaction.customId.startsWith("ms_")) {
         try { await handleMasterSetupButton(interaction as ButtonInteraction); } catch (err) { console.error("Master setup button error:", err); }
         return;
@@ -470,6 +497,10 @@ export async function registerPanelCommands(client: Client) {
         try { await handleHelpSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("Help select error:", err); }
         return;
       }
+      if (interaction.customId.startsWith("am_")) {
+        try { await handleAutoModStringSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("AutoMod string select error:", err); }
+        return;
+      }
       if (interaction.customId === "cp_game_select") {
         try { await handleCtpGameSelect(interaction as StringSelectMenuInteraction); } catch (err) { console.error("CTP game select error:", err); }
       } else if (interaction.customId.startsWith("ct_")) {
@@ -481,6 +512,10 @@ export async function registerPanelCommands(client: Client) {
     }
 
     if (interaction.isRoleSelectMenu()) {
+      if (interaction.customId.startsWith("am_")) {
+        try { await handleAutoModRoleSelect(interaction as RoleSelectMenuInteraction); } catch (err) { console.error("AutoMod role select error:", err); }
+        return;
+      }
       await handleRoleSelectInteraction(interaction as RoleSelectMenuInteraction);
       return;
     }
@@ -490,12 +525,20 @@ export async function registerPanelCommands(client: Client) {
         try { await handleWelcomeChannelSelect(interaction as ChannelSelectMenuInteraction); } catch (err) { console.error("Welcome channel select error:", err); }
         return;
       }
+      if (interaction.customId.startsWith("am_")) {
+        try { await handleAutoModChannelSelect(interaction as ChannelSelectMenuInteraction); } catch (err) { console.error("AutoMod channel select error:", err); }
+        return;
+      }
       await handleChannelSelectInteraction(interaction as ChannelSelectMenuInteraction);
       return;
     }
 
     if (interaction.isModalSubmit()) {
       const { customId } = interaction;
+      if (customId.startsWith("am_")) {
+        try { await handleAutoModModal(interaction as ModalSubmitInteraction); } catch (err) { console.error("AutoMod modal error:", err); }
+        return;
+      }
       if (customId === "pfx_modal") {
         await handlePrefixModalSubmit(interaction as ModalSubmitInteraction);
       } else if (customId.startsWith("cp_") || customId.startsWith("ct_")) {

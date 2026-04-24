@@ -13,6 +13,7 @@ import { openCtpTagPanel } from "./ctpTemp.js";
 import { openGeneralSetupPanel } from "./general.js";
 import { openWelcomePanel } from "./welcome.js";
 import { openAnnPanel } from "./ann.js";
+import { openAutoModPanel } from "./automod.js";
 import { buildAllCommandsEmbed, getGuildPrefixes } from "./index.js";
 
 const BRAND_COLOR = 0x5000ff;
@@ -41,7 +42,7 @@ export function buildMasterSetupRows(): ActionRowBuilder<ButtonBuilder>[] {
     new ButtonBuilder().setCustomId("ms_clear").setStyle(ButtonStyle.Secondary).setLabel("Clear").setEmoji("\uD83E\uDDF9"),
   );
   const row3 = new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId("ms_autodelete").setStyle(ButtonStyle.Secondary).setLabel("Auto-Delete").setEmoji("\uD83D\uDEAB"),
+    new ButtonBuilder().setCustomId("ms_autodelete").setStyle(ButtonStyle.Primary).setLabel("Auto-Mod").setEmoji("\uD83D\uDEE1\uFE0F"),
     new ButtonBuilder().setCustomId("ms_stagelock").setStyle(ButtonStyle.Secondary).setLabel("Stage Lock").setEmoji("\uD83C\uDFA4"),
     new ButtonBuilder().setCustomId("ms_prefix").setStyle(ButtonStyle.Secondary).setLabel("Prefixes").setEmoji("\uD83D\uDD24"),
     new ButtonBuilder().setCustomId("ms_help").setStyle(ButtonStyle.Success).setLabel("Help").setEmoji("\u2753"),
@@ -188,11 +189,7 @@ export async function handleMasterSetupButton(interaction: ButtonInteraction): P
       );
       return;
     case "ms_autodelete":
-      await infoReply(
-        interaction,
-        "\uD83D\uDEAB Auto-Delete",
-        "Open the Auto-Delete panel with **`/auto-delete`**.\nBlock words server-wide and configure per-channel or per-category content rules.",
-      );
+      await openAutoModPanel(interaction);
       return;
     case "ms_stagelock":
       await infoReply(
