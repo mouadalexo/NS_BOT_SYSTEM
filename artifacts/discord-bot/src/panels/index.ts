@@ -87,9 +87,16 @@ import {
   handleWelcomeChannelSelect,
   handleWelcomeStringSelect,
   handleWelcomeModalSubmit,
-  handleSetupMoveCommand,
   handleSetupClearCommand,
 } from "./welcome.js";
+import {
+  openMovePanel,
+  handleMovePowerfulSelect,
+  handleMoveConfirmationSelect,
+  handleMovePanelSave,
+  handleMovePanelReset,
+  handleMovePanelPreview,
+} from "./move.js";
 import { handleMasterSetupButton } from "./master.js";
 import {
   openAutoModPanel,
@@ -391,18 +398,8 @@ export async function registerPanelCommands(client: Client) {
   // without a configured role.
   const moveCommand = new SlashCommandBuilder()
     .setName("move")
-    .setDescription("Roles allowed to use 'aji @user' (powerful = instant, confirmation = needs accept)")
+    .setDescription("Open the Move setup panel (powerful + confirmation roles)")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addRoleOption((o) => o.setName("powerful-1").setDescription("Powerful move role (instant, no confirmation)").setRequired(false))
-    .addRoleOption((o) => o.setName("powerful-2").setDescription("Powerful move role").setRequired(false))
-    .addRoleOption((o) => o.setName("powerful-3").setDescription("Powerful move role").setRequired(false))
-    .addRoleOption((o) => o.setName("powerful-4").setDescription("Powerful move role").setRequired(false))
-    .addRoleOption((o) => o.setName("powerful-5").setDescription("Powerful move role").setRequired(false))
-    .addRoleOption((o) => o.setName("confirmation-1").setDescription("Confirmation move role (target must accept)").setRequired(false))
-    .addRoleOption((o) => o.setName("confirmation-2").setDescription("Confirmation move role").setRequired(false))
-    .addRoleOption((o) => o.setName("confirmation-3").setDescription("Confirmation move role").setRequired(false))
-    .addRoleOption((o) => o.setName("confirmation-4").setDescription("Confirmation move role").setRequired(false))
-    .addRoleOption((o) => o.setName("confirmation-5").setDescription("Confirmation move role").setRequired(false))
     .toJSON();
 
   const clearCommand = buildRoleSet(
@@ -493,7 +490,7 @@ export async function registerPanelCommands(client: Client) {
           await openServerLogsPanel(interaction as ChatInputCommandInteraction);
         }
       } else if (name === "move") {
-        await handleSetupMoveCommand(interaction as ChatInputCommandInteraction);
+        await openMovePanel(interaction as ChatInputCommandInteraction);
       } else if (name === "clear") {
         await handleSetupClearCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
@@ -798,6 +795,12 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleAnnColorBack(interaction);
     } else if (customId.startsWith("rg_")) {
       await handleRoleGiverButton(interaction);
+    } else if (customId === "mv_save") {
+      await handleMovePanelSave(interaction);
+    } else if (customId === "mv_reset") {
+      await handleMovePanelReset(interaction);
+    } else if (customId === "mv_preview") {
+      await handleMovePanelPreview(interaction);
     }
   } catch (err) {
     console.error("Panel button error:", err);
@@ -831,6 +834,10 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handleAnnEventRoleSelect(interaction);
     } else if (customId.startsWith("rg_")) {
       await handleRoleGiverRoleSelect(interaction);
+    } else if (customId === "mv_powerful_roles") {
+      await handleMovePowerfulSelect(interaction);
+    } else if (customId === "mv_confirmation_roles") {
+      await handleMoveConfirmationSelect(interaction);
     }
   } catch (err) {
     console.error("Panel role select error:", err);
