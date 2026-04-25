@@ -931,10 +931,14 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
     return;
   }
 
-  // Cancel
+  // Cancel — silently dismiss the click and delete the panel message so the
+  // channel is left clean.
   if (customId.startsWith("an_cancel:")) {
     annSetupState.delete(ownerId);
-    await interaction.update({ content: "\u2716\uFE0F Cancelled.", embeds: [], components: [] });
+    await interaction.deferUpdate().catch(() => {});
+    if (interaction.message?.deletable) {
+      await interaction.message.delete().catch(() => {});
+    }
     return;
   }
 
@@ -1024,7 +1028,13 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
     }
 
     annSetupState.delete(ownerId);
-    await interaction.update({ content: "\u2705 Sending\u2026", embeds: [], components: [] });
+    // Acknowledge the click silently and remove the panel message from the
+    // channel so we don't leave a "Sending…" status hanging around. The actual
+    // announcement is posted below.
+    await interaction.deferUpdate().catch(() => {});
+    if (interaction.message?.deletable) {
+      await interaction.message.delete().catch(() => {});
+    }
 
     const guild = client.guilds.cache.get(state.guildId);
     if (!guild) return;
