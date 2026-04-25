@@ -212,9 +212,10 @@ export function registerMoveModule(client: Client) {
 
       // Confirmation flow (request role OR couple)
       const reqId = `${actor.id}_${target.id}_${Date.now().toString(36)}`;
+      const actorName = actor.displayName;
       const why = isCouple
-        ? `Your partner <@${actor.id}> wants to bring you to **${actorVoice.name}**.`
-        : `<@${actor.id}> wants to bring you to **${actorVoice.name}**.`;
+        ? `Your partner **${actorName}** wants to bring you to **${actorVoice.name}**.`
+        : `**${actorName}** wants to bring you to **${actorVoice.name}**.`;
 
       const panel = new EmbedBuilder()
         .setColor(COLOR_CONFIRM)
@@ -246,7 +247,7 @@ export function registerMoveModule(client: Client) {
         reason: isCouple ? "couple" : "request_role",
       });
 
-      // Auto-expire / disable buttons after TTL
+      // Auto-expire: delete the request message when TTL runs out
       setTimeout(async () => {
         const stale = pendingMoves.get(reqId);
         if (!stale) return;
@@ -255,10 +256,7 @@ export function registerMoveModule(client: Client) {
         if (!ch || !ch.isTextBased()) return;
         const msg = await ch.messages.fetch(stale.panelMsgId).catch(() => null);
         if (!msg) return;
-        await msg.edit({
-          embeds: [shortEmbed(COLOR_ERROR, `\u23F0 Move request from <@${stale.actorId}> expired.`)],
-          components: [decisionRow(reqId, true)],
-        }).catch(() => {});
+        await msg.delete().catch(() => {});
       }, REQUEST_TTL + 1000);
 
       message.delete().catch(() => {});
@@ -285,6 +283,8 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
   const target = await guild.members.fetch(req.targetId).catch(() => null);
   const actor = await guild.members.fetch(req.actorId).catch(() => null);
 
+  const DELETE_DELAY = 4000;
+
   if (action === "mv_reject") {
     pendingMoves.delete(reqId);
     await interaction.update({
@@ -292,11 +292,12 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
         new EmbedBuilder()
           .setColor(COLOR_ERROR)
           .setTitle("\u274C Move Declined")
-          .setDescription(`<@${req.targetId}> declined the move request from <@${req.actorId}>.`)
+          .setDescription(`<@${req.targetId}> declined the move request.`)
           .setFooter({ text: "Night Stars \u2022 Move" }),
       ],
-      components: [decisionRow(reqId, true)],
+      components: [],
     });
+    setTimeout(() => interaction.message.delete().catch(() => {}), DELETE_DELAY);
     return;
   }
 
@@ -306,8 +307,9 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
     pendingMoves.delete(reqId);
     await interaction.update({
       embeds: [shortEmbed(COLOR_ERROR, "\u274C One of the members is no longer in the server.")],
-      components: [decisionRow(reqId, true)],
+      components: [],
     });
+    setTimeout(() => interaction.message.delete().catch(() => {}), DELETE_DELAY);
     return;
   }
   const dest = await guild.channels.fetch(req.destChannelId).catch(() => null);
@@ -315,8 +317,9 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
     pendingMoves.delete(reqId);
     await interaction.update({
       embeds: [shortEmbed(COLOR_ERROR, "\u274C The destination voice channel no longer exists.")],
-      components: [decisionRow(reqId, true)],
+      components: [],
     });
+    setTimeout(() => interaction.message.delete().catch(() => {}), DELETE_DELAY);
     return;
   }
 
@@ -326,8 +329,9 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
   if (!result.ok) {
     await interaction.update({
       embeds: [shortEmbed(COLOR_ERROR, `\u274C ${result.reason}`)],
-      components: [decisionRow(reqId, true)],
+      components: [],
     });
+    setTimeout(() => interaction.message.delete().catch(() => {}), DELETE_DELAY);
     return;
   }
 
@@ -336,9 +340,10 @@ export async function handleMoveButton(interaction: ButtonInteraction) {
       new EmbedBuilder()
         .setColor(COLOR_CONFIRM)
         .setTitle("\u2705 Move Accepted")
-        .setDescription(`<@${req.targetId}> joined <@${req.actorId}> in **${dest.name}**.`)
+        .setDescription(`<@${req.targetId}> joined **${dest.name}**.`)
         .setFooter({ text: "Night Stars \u2022 Move" }),
     ],
-    components: [decisionRow(reqId, true)],
+    components: [],
   });
+  setTimeout(() => interaction.message.delete().catch(() => {}), DELETE_DELAY);
 }
