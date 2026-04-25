@@ -87,7 +87,6 @@ import {
   handleWelcomeChannelSelect,
   handleWelcomeStringSelect,
   handleWelcomeModalSubmit,
-  handleSetupClearCommand,
 } from "./welcome.js";
 import {
   openMovePanel,
@@ -97,6 +96,13 @@ import {
   handleMovePanelReset,
   handleMovePanelPreview,
 } from "./move.js";
+import {
+  openClearPanel,
+  handleClearRolesSelect,
+  handleClearPanelSave,
+  handleClearPanelReset,
+  handleClearPanelPreview,
+} from "./clear.js";
 import { handleMasterSetupButton } from "./master.js";
 import {
   openAutoModPanel,
@@ -402,12 +408,11 @@ export async function registerPanelCommands(client: Client) {
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .toJSON();
 
-  const clearCommand = buildRoleSet(
-    new SlashCommandBuilder()
-      .setName("clear")
-      .setDescription("Roles allowed to use 'mse7 N' to clear messages")
-      .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator),
-  ).toJSON();
+  const clearCommand = new SlashCommandBuilder()
+    .setName("clear")
+    .setDescription("Open the Clear setup panel (roles allowed to use mse7)")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .toJSON();
 
   const rest = new REST().setToken(token);
 
@@ -492,7 +497,7 @@ export async function registerPanelCommands(client: Client) {
       } else if (name === "move") {
         await openMovePanel(interaction as ChatInputCommandInteraction);
       } else if (name === "clear") {
-        await handleSetupClearCommand(interaction as ChatInputCommandInteraction);
+        await openClearPanel(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
         await interaction.reply({
           embeds: [
@@ -801,6 +806,12 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handleMovePanelReset(interaction);
     } else if (customId === "mv_preview") {
       await handleMovePanelPreview(interaction);
+    } else if (customId === "cl_save") {
+      await handleClearPanelSave(interaction);
+    } else if (customId === "cl_reset") {
+      await handleClearPanelReset(interaction);
+    } else if (customId === "cl_preview") {
+      await handleClearPanelPreview(interaction);
     }
   } catch (err) {
     console.error("Panel button error:", err);
@@ -838,6 +849,8 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
       await handleMovePowerfulSelect(interaction);
     } else if (customId === "mv_confirmation_roles") {
       await handleMoveConfirmationSelect(interaction);
+    } else if (customId === "cl_roles") {
+      await handleClearRolesSelect(interaction);
     }
   } catch (err) {
     console.error("Panel role select error:", err);
