@@ -103,6 +103,12 @@ import {
 } from "./clear.js";
 import { handleMasterSetupButton } from "./master.js";
 import {
+  openMusicPanel,
+  handleMusicDjRoleSelect,
+  handleMusicChannelSelect,
+  handleMusicReset,
+} from "./music.js";
+import {
   openAutoModPanel,
   handleAutoModButton,
   handleAutoModRoleSelect,
@@ -202,6 +208,16 @@ export function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!"
       { name: "\u200B", value: "** **", inline: false },
             { name: "\u200B", value: "** **", inline: false },
 
+      { name: "\u200B", value: "** **", inline: false },
+      {
+        name: "\uD83C\uDFB5 Music Releases (DJ Role or Admin)",
+        value: [
+          "`=post <link>` \u2014 Post a music release (Deezer, Spotify, Apple Music, etc.)",
+          "`=add <artist name>` \u2014 Add an artist to auto-release tracking",
+          "`/music` \u2014 Configure DJ role and notification channel (Admin only)",
+        ].join("\n"),
+        inline: false,
+      },
       { name: "\u200B", value: "** **", inline: false },
       {
         name: "\uD83D\uDC9E Social System (everyone)",
@@ -412,6 +428,12 @@ export async function registerPanelCommands(client: Client) {
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .toJSON();
 
+  const musicCommand = new SlashCommandBuilder()
+    .setName("music")
+    .setDescription("Configure the Music Release system (DJ role, notification channel)")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
+    .toJSON();
+
   const rest = new REST().setToken(token);
 
   const registerForGuild = async (guildId: string, guildName: string) => {
@@ -430,6 +452,7 @@ export async function registerPanelCommands(client: Client) {
           logsCommand,
           moveCommand,
           clearCommand,
+          musicCommand,
           helpCommand,
           pingCommand,
           prefixCommand,
@@ -496,6 +519,8 @@ export async function registerPanelCommands(client: Client) {
         await openMovePanel(interaction as ChatInputCommandInteraction);
       } else if (name === "clear") {
         await openClearPanel(interaction as ChatInputCommandInteraction);
+      } else if (name === "music") {
+        await openMusicPanel(interaction as ChatInputCommandInteraction);
       } else if (name === "ping") {
         await interaction.reply({
           embeds: [
@@ -564,6 +589,12 @@ export async function registerPanelCommands(client: Client) {
         try { await handleSocialButton(interaction as ButtonInteraction); } catch (err) { console.error("Social button error:", err); }
         return;
       }
+      if (interaction.customId.startsWith("mu_")) {
+        if (interaction.customId === "mu_reset") {
+          try { await handleMusicReset(interaction as ButtonInteraction); } catch (err) { console.error("Music button error:", err); }
+        }
+        return;
+      }
       if (interaction.customId.startsWith("mv_")) {
         if (interaction.customId.startsWith("mv_accept:") || interaction.customId.startsWith("mv_reject:")) {
           try { await handleMoveButton(interaction as ButtonInteraction); } catch (err) { console.error("Move button error:", err); }
@@ -602,6 +633,10 @@ export async function registerPanelCommands(client: Client) {
         try { await handleAutoModRoleSelect(interaction as RoleSelectMenuInteraction); } catch (err) { console.error("AutoMod role select error:", err); }
         return;
       }
+      if (interaction.customId === "mu_dj_role") {
+        try { await handleMusicDjRoleSelect(interaction as RoleSelectMenuInteraction); } catch (err) { console.error("Music role select error:", err); }
+        return;
+      }
       await handleRoleSelectInteraction(interaction as RoleSelectMenuInteraction);
       return;
     }
@@ -617,6 +652,10 @@ export async function registerPanelCommands(client: Client) {
       }
       if (interaction.customId.startsWith("sl_")) {
         try { await handleServerLogsChannelSelect(interaction as ChannelSelectMenuInteraction); } catch (err) { console.error("ServerLogs channel select error:", err); }
+        return;
+      }
+      if (interaction.customId === "mu_channel") {
+        try { await handleMusicChannelSelect(interaction as ChannelSelectMenuInteraction); } catch (err) { console.error("Music channel select error:", err); }
         return;
       }
       await handleChannelSelectInteraction(interaction as ChannelSelectMenuInteraction);
