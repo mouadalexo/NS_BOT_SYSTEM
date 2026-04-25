@@ -610,7 +610,7 @@ export async function registerPanelCommands(client: Client) {
           } else if (interaction.customId.startsWith("mu_copy:")) {
             const url = interaction.customId.slice("mu_copy:".length);
             await (interaction as ButtonInteraction).reply({
-              content: `\`\`\`\n${url}\n\`\`\`\n*Tap and hold the link above to copy it, then paste into your music bot.*`,
+              content: `\`\`\`\n${url}\n\`\`\``,
               ephemeral: true,
             });
           }

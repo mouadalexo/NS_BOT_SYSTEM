@@ -297,11 +297,11 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata | null> {
     const ogDescription = meta("og:description");
     const ogImage       = meta("og:image");
     const ogType        = meta("og:type");
-    const musicArtist   = meta("music:musician") || meta("music:musician:profile") || meta("music:creator");
+    const musicArtistRaw= meta("music:musician") || meta("music:musician:profile") || meta("music:creator");
     const musicRelease  = meta("music:release_date") || meta("music:album:release_date");
-    const musicAlbum    = meta("music:album");
 
-    let artist: string | null = musicArtist;
+    // music:musician is often a URL (e.g. Spotify artist page). Only use it directly if it's a name.
+    let artist: string | null = (musicArtistRaw && !/^https?:\/\//i.test(musicArtistRaw)) ? musicArtistRaw : null;
     let recordType: string | null = null;
     let trackCount: number | null = null;
     let year: string | null = null;
@@ -312,11 +312,13 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata | null> {
       const parts = ogDescription.split(/[·•]/).map(s => s.trim()).filter(Boolean);
 
       if (!artist && parts.length >= 2) {
-        // Pick the part that's not a year, not a track-count, not a record-type label
+        const titleNorm = (ogTitle || "").trim().toLowerCase();
         const candidates = parts.filter(p =>
           !/^\d{4}$/.test(p) &&
           !/^\d+\s+songs?$/i.test(p) &&
-          !/^(album|single|ep|compilation|playlist|song|track)$/i.test(p)
+          !/^(album|single|ep|compilation|playlist|song|track)$/i.test(p) &&
+          !/^https?:\/\//i.test(p) &&
+          p.trim().toLowerCase() !== titleNorm
         );
         if (candidates.length) artist = candidates[candidates.length - 1];
       }
@@ -329,6 +331,21 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata | null> {
 
       const rMatch = parts.find(p => /^(album|single|ep|compilation)$/i.test(p));
       if (rMatch) recordType = rMatch.charAt(0).toUpperCase() + rMatch.slice(1).toLowerCase();
+    }
+
+    // Spotify and similar: music:musician is a URL → fetch that page and grab its og:title (artist name)
+    if (!artist && musicArtistRaw && /^https?:\/\//i.test(musicArtistRaw)) {
+      try {
+        const r = await fetch(musicArtistRaw, {
+          headers: { "User-Agent": "Mozilla/5.0 (compatible; NSBot/1.0)" },
+          redirect: "follow",
+        });
+        if (r.ok) {
+          const h = await r.text();
+          const m = h.match(/<meta[^>]+property=["']og:title["'][^>]*content=["']([^"']+)["']/i);
+          if (m) artist = decodeHtmlEntities(m[1]);
+        }
+      } catch { /* ignore */ }
     }
 
     // og:type → record type fallback
@@ -348,9 +365,6 @@ async function fetchUrlMetadata(url: string): Promise<UrlMetadata | null> {
       }
     }
 
-    if (musicAlbum && (!title || ogType?.includes("song"))) {
-      // For tracks, use album name from music:album
-    }
     if (musicRelease && !year) {
       const ym = musicRelease.match(/^(\d{4})/);
       if (ym) year = ym[1];
