@@ -113,7 +113,11 @@ import {
   handleMusicPickCancel,
   handleMusicRemoveButton,
   handleMusicRemoveSelect,
+  handleMusicSetPlayCmdButton,
+  handleMusicSetPlayCmdModal,
+  getPlayCommand,
 } from "./music.js";
+import { enqueuePlayRequest } from "../modules/music/playQueue.js";
 import {
   openAutoModPanel,
   handleAutoModButton,
@@ -607,10 +611,50 @@ export async function registerPanelCommands(client: Client) {
             await handleMusicPickCancel(interaction as ButtonInteraction);
           } else if (interaction.customId.startsWith("mu_pick:")) {
             await handleMusicPickButton(interaction as ButtonInteraction);
-          } else if (interaction.customId.startsWith("mu_copy:")) {
-            const url = interaction.customId.slice("mu_copy:".length);
-            await (interaction as ButtonInteraction).reply({
-              content: `\`\`\`\n${url}\n\`\`\``,
+          } else if (interaction.customId === "mu_set_playcmd") {
+            await handleMusicSetPlayCmdButton(interaction as ButtonInteraction);
+          } else if (interaction.customId.startsWith("mu_play:")) {
+            // ▶️ play button on a release post: queue the request to join the
+            // clicker's voice channel and post the music-bot play command.
+            const btn = interaction as ButtonInteraction;
+            const url = btn.customId.slice("mu_play:".length);
+            const playCmd = await getPlayCommand(btn.guildId!);
+            if (!playCmd) {
+              await btn.reply({
+                content: "❌ No music-bot play command is set yet. An admin can set it from `/music` → **🎛️ Set Play Cmd**.",
+                ephemeral: true,
+              });
+              return;
+            }
+            const member = await btn.guild!.members.fetch(btn.user.id).catch(() => null);
+            const voiceChannel = member?.voice?.channel;
+            if (!voiceChannel || (voiceChannel.type !== ChannelType.GuildVoice && voiceChannel.type !== ChannelType.GuildStageVoice)) {
+              await btn.reply({
+                content: "❌ Join a voice channel first, then click ▶️ again.",
+                ephemeral: true,
+              });
+              return;
+            }
+            const result = enqueuePlayRequest({
+              guildId: btn.guildId!,
+              voiceChannelId: voiceChannel.id,
+              textChannelId: btn.channelId!,
+              requesterId: btn.user.id,
+              playCmd,
+              link: url,
+              client: btn.client,
+            });
+            if (result.kind === "cooldown") {
+              await btn.reply({
+                content: `⏳ Slow down — try again in ${result.retryInSeconds}s.`,
+                ephemeral: true,
+              });
+              return;
+            }
+            await btn.reply({
+              content: result.position === 0
+                ? `▶️ Joining <#${voiceChannel.id}> now…`
+                : `▶️ Queued — you're #${result.position + 1} in line.`,
               ephemeral: true,
             });
           }
@@ -711,6 +755,8 @@ export async function registerPanelCommands(client: Client) {
         try { await handleWelcomeModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Welcome modal error:", err); }
       } else if (customId === "mu_add_modal") {
         try { await handleMusicAddModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Music add modal error:", err); }
+      } else if (customId === "mu_playcmd_modal") {
+        try { await handleMusicSetPlayCmdModal(interaction as ModalSubmitInteraction); } catch (err) { console.error("Music play-cmd modal error:", err); }
       }
       return;
     }

@@ -202,14 +202,14 @@ function cleanCopyUrl(url: string): string {
   }
 }
 
-function buildCopyRow(url: string): ActionRowBuilder<ButtonBuilder> {
+function buildPlayRow(url: string): ActionRowBuilder<ButtonBuilder> {
   const clean = cleanCopyUrl(url);
-  // Discord custom_id limit: 100 chars. "mu_copy:" prefix = 8, leaves 92 for URL.
+  // Discord custom_id limit: 100 chars. "mu_play:" prefix = 8, leaves 92 for URL.
   const idUrl = clean.length <= 92 ? clean : url.slice(0, 92);
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`mu_copy:${idUrl}`)
-      .setEmoji("🔗")
+      .setCustomId(`mu_play:${idUrl}`)
+      .setEmoji("▶️")
       .setStyle(ButtonStyle.Secondary)
   );
 }
@@ -246,7 +246,7 @@ async function buildReleaseEmbeds(album: DeezerAlbum, copyUrl?: string, markAsNe
   const url = copyUrl ?? album.link;
   return {
     embeds: [main],
-    components: url ? [buildCopyRow(url)] : [],
+    components: url ? [buildPlayRow(url)] : [],
   };
 }
 
@@ -426,7 +426,7 @@ async function buildExternalReleaseEmbeds(meta: UrlMetadata, url: string, markAs
 
   return {
     embeds: [main],
-    components: [buildCopyRow(url)],
+    components: [buildPlayRow(url)],
   };
 }
 
@@ -438,7 +438,7 @@ function buildGenericDropEmbeds(url: string, _djName: string): PostPayload {
         .setAuthor({ name: "NEW DROP · OUT NOW" })
         .setDescription(`# ${detectPlatform(url)} Release`),
     ],
-    components: [buildCopyRow(url)],
+    components: [buildPlayRow(url)],
   };
 }
 

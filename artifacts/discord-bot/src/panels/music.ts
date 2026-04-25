@@ -30,20 +30,49 @@ import {
 const MUSIC_COLOR = 0x5000ff;
 
 async function getMusicConfig(guildId: string) {
-  const res = await pool.query<{ dj_role_id: string | null; notification_channel_id: string | null }>(
-    "SELECT dj_role_id, notification_channel_id FROM music_config WHERE guild_id = $1",
+  const res = await pool.query<{
+    dj_role_id: string | null;
+    notification_channel_id: string | null;
+    play_command: string | null;
+  }>(
+    "SELECT dj_role_id, notification_channel_id, play_command FROM music_config WHERE guild_id = $1",
     [guildId]
   );
-  return res.rows[0] ?? { dj_role_id: null, notification_channel_id: null };
+  return res.rows[0] ?? { dj_role_id: null, notification_channel_id: null, play_command: null };
 }
 
-async function saveMusicConfig(guildId: string, djRoleId: string | null, channelId: string | null): Promise<void> {
+async function saveMusicConfig(
+  guildId: string,
+  djRoleId: string | null,
+  channelId: string | null,
+  playCommand?: string | null,
+): Promise<void> {
+  // Three-arg legacy callers (DJ-role / channel changes) shouldn't blow away
+  // the existing play command, so we only update it when explicitly passed.
+  if (typeof playCommand === "undefined") {
+    await pool.query(
+      `INSERT INTO music_config (guild_id, dj_role_id, notification_channel_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (guild_id) DO UPDATE SET dj_role_id = $2, notification_channel_id = $3, updated_at = now()`,
+      [guildId, djRoleId, channelId]
+    );
+    return;
+  }
   await pool.query(
-    `INSERT INTO music_config (guild_id, dj_role_id, notification_channel_id)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (guild_id) DO UPDATE SET dj_role_id = $2, notification_channel_id = $3, updated_at = now()`,
-    [guildId, djRoleId, channelId]
+    `INSERT INTO music_config (guild_id, dj_role_id, notification_channel_id, play_command)
+     VALUES ($1, $2, $3, $4)
+     ON CONFLICT (guild_id) DO UPDATE
+       SET dj_role_id = $2,
+           notification_channel_id = $3,
+           play_command = $4,
+           updated_at = now()`,
+    [guildId, djRoleId, channelId, playCommand]
   );
+}
+
+export async function getPlayCommand(guildId: string): Promise<string | null> {
+  const cfg = await getMusicConfig(guildId);
+  return cfg.play_command;
 }
 
 async function getTrackedArtists(guildId: string): Promise<{ deezer_artist_id: string; artist_name: string }[]> {
@@ -71,6 +100,13 @@ async function buildMusicPanelEmbed(guildId: string): Promise<EmbedBuilder> {
         name: "Notification Channel",
         value: cfg.notification_channel_id ? `<#${cfg.notification_channel_id}>` : "*Not set*",
         inline: true,
+      },
+      {
+        name: "Music Bot Play Command",
+        value: cfg.play_command
+          ? `\`${cfg.play_command}\` *(used when ▶️ is clicked)*`
+          : "*Not set — ▶️ play button will be disabled*",
+        inline: false,
       },
       {
         name: `Tracked Artists (${artists.length})`,
@@ -111,11 +147,51 @@ function buildMusicPanelComponents(hasArtists: boolean): ActionRowBuilder<any>[]
         .setStyle(ButtonStyle.Secondary)
         .setDisabled(!hasArtists),
       new ButtonBuilder()
+        .setCustomId("mu_set_playcmd")
+        .setLabel("🎛️ Set Play Cmd")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
         .setCustomId("mu_reset")
         .setLabel("🗑️ Reset Config")
         .setStyle(ButtonStyle.Danger)
     ),
   ];
+}
+
+// Open a modal so the admin can type the music-bot prefix used when the ▶️
+// button is clicked (e.g. "!p", "?play", "m!play"). Submitting an empty value
+// disables the ▶️ button (we treat null as unset).
+export async function handleMusicSetPlayCmdButton(interaction: ButtonInteraction): Promise<void> {
+  const cfg = await getMusicConfig(interaction.guildId!);
+  const modal = new ModalBuilder()
+    .setCustomId("mu_playcmd_modal")
+    .setTitle("Music Bot Play Command")
+    .addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("playcmd")
+          .setLabel("Command (the album link is appended)")
+          .setPlaceholder("!p")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(20)
+          .setValue(cfg.play_command ?? "")
+      )
+    );
+  await interaction.showModal(modal);
+}
+
+export async function handleMusicSetPlayCmdModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const raw = interaction.fields.getTextInputValue("playcmd").trim();
+  const value = raw.length ? raw : null;
+  const cfg = await getMusicConfig(interaction.guildId!);
+  await saveMusicConfig(interaction.guildId!, cfg.dj_role_id, cfg.notification_channel_id, value);
+  await interaction.reply({
+    content: value
+      ? `✅ Play command set to \`${value}\`. The ▶️ button will now make me join your voice and post \`${value} <album-link>\`.`
+      : "✅ Play command cleared. The ▶️ button will be disabled until you set one.",
+    ephemeral: true,
+  });
 }
 
 async function refreshPanel(

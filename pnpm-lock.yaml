@@ -215,6 +215,12 @@ importers:
 
   artifacts/discord-bot:
     dependencies:
+      '@discordjs/voice':
+        specifier: ^0.19.2
+        version: 0.19.2(@emnapi/runtime@1.10.0)
+      '@types/libsodium-wrappers':
+        specifier: ^0.8.2
+        version: 0.8.2
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
@@ -227,6 +233,9 @@ importers:
       drizzle-orm:
         specifier: 'catalog:'
         version: 0.45.1(@types/pg@8.18.0)(pg@8.20.0)
+      libsodium-wrappers:
+        specifier: ^0.8.4
+        version: 0.8.4
       sharp:
         specifier: ^0.33.5
         version: 0.33.5
@@ -597,6 +606,10 @@ packages:
     resolution: {integrity: sha512-3LKP7F2+atl9vJFhaBjn4nOaSWahZ/yWjOvA4e5pnXkt2qyXRCHLxoBQy81GFtLGCq7K9lPm9R517M1U+/90Qg==}
     engines: {node: '>=18'}
 
+  '@discordjs/voice@0.19.2':
+    resolution: {integrity: sha512-3yJ255e4ag3wfZu/DSxeOZK1UtnqNxnspmLaQetGT0pDkThNZoHs+Zg6dgZZ19JEVomXygvfHn9lNpICZuYtEA==}
+    engines: {node: '>=22.12.0'}
+
   '@discordjs/ws@1.2.3':
     resolution: {integrity: sha512-wPlQDxEmlDg5IxhJPuxXr3Vy9AjYq5xCvFWGJyD7w7Np8ZGu+Mc+97LCoEc/+AYCo2IDpKioiH0/c/mj5ZR9Uw==}
     engines: {node: '>=16.11.0'}
@@ -768,6 +781,12 @@ packages:
 
   '@jridgewell/trace-mapping@0.3.31':
     resolution: {integrity: sha512-zzNR+SdQSDJzc8joaeP8QQoCQr8NuYx2dIIytl1QeBEZHJ9uW6hebsrYgbz8hJwUQao3TWCMtmfV8Nu1twOLAw==}
+
+  '@napi-rs/wasm-runtime@1.1.4':
+    resolution: {integrity: sha512-3NQNNgA1YSlJb/kMH1ildASP9HW7/7kYnRI2szWJaofaS1hWmbGI4H+d3+22aGzXXN9IJ+n+GiFVcGipJP18ow==}
+    peerDependencies:
+      '@emnapi/core': ^1.7.1
+      '@emnapi/runtime': ^1.7.1
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -1555,6 +1574,97 @@ packages:
     resolution: {integrity: sha512-tlqY9xq5ukxTUZBmoOp+m61cqwQD5pHJtFY3Mn8CA8ps6yghLH/Hw8UPdqg4OLmFW3IFlcXnQNmo/dh8HzXYIQ==}
     engines: {node: '>=18'}
 
+  '@snazzah/davey-android-arm-eabi@0.1.11':
+    resolution: {integrity: sha512-T1RYbNYKN6tLOcGIDKJd8OI6FBSEemwL7DOYdTMmhqfhhMr3YVN8WOhfoxGg63OcnpTN2e2c5tdY2bAx25RmQQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [android]
+
+  '@snazzah/davey-android-arm64@0.1.11':
+    resolution: {integrity: sha512-ksJn/x2VU8h6w9eku1HT96ugSRZ7lKVkKNKbFleaFN+U99DJaPM+gMu2YvnFU4V54HR06ZBnRihnVG6VLXQpDw==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [android]
+
+  '@snazzah/davey-darwin-arm64@0.1.11':
+    resolution: {integrity: sha512-E1d7PbaaVMO3Lj9EiAPqOVbuV0xg5+PsHzHH097DDXiD1+zUDXvJaTnUWsnm5z50pJniHpi4GtaYmk+ieB/guA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@snazzah/davey-darwin-x64@0.1.11':
+    resolution: {integrity: sha512-Tl4TI/LTmgJZepgbgVMYDi8RqlAkPtPg1OEBPl7a9Tn3AwR36Vs6lyIT1cs/lGy/ds/+B+mKI4rPObN1cyILTw==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [darwin]
+
+  '@snazzah/davey-freebsd-x64@0.1.11':
+    resolution: {integrity: sha512-T8Iw9FXkuI1T+YBAFzh9v/TXf9IOTOSqnd/BFpTRTrlW72PR2lhIidzSmg027VxO7r5pX47iFwiOkb9I/NU/EA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [freebsd]
+
+  '@snazzah/davey-linux-arm-gnueabihf@0.1.11':
+    resolution: {integrity: sha512-1Txj+8pqA8uq/OGtaUaBFWAPnNMQzFgIywj0iA7EI4xZl+mab48/pv+YZ1pNb/suC6ynsW44oB9efiXSdcUAgA==}
+    engines: {node: '>= 10'}
+    cpu: [arm]
+    os: [linux]
+
+  '@snazzah/davey-linux-arm64-gnu@0.1.11':
+    resolution: {integrity: sha512-ERzF5nM/IYW1BcN3wLXpEwBCGLFf0kGJUVhaV6yfiInz0tkU8UmvrrgpaMaACfMjIhfWdq5CcX+aTkXo/saNcg==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@snazzah/davey-linux-arm64-musl@0.1.11':
+    resolution: {integrity: sha512-e6pX6Hiabtz99q+H/YHNkm9JVlpqN8HGh0qPib8G2+UY4/SSH8WvqWipk3v581dMy2oyCHt7MOoY1aU1P1N/xA==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@snazzah/davey-linux-x64-gnu@0.1.11':
+    resolution: {integrity: sha512-TW5bSoqChOJMbvsDb4wAATYrxmAXuNnse7wFNVSAJUaZKSeRfZbu3UAiPWSNn7GwLwSfU6hg322KZUn8IWCuvg==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@snazzah/davey-linux-x64-musl@0.1.11':
+    resolution: {integrity: sha512-5j6Pmc+Wzv5lSxVP6quA7teYRJXibkZqQyYGfTDnTsUOO5dPpcojpqlXlkhyvsA1OAQTj4uxbOCciN3cVWwzug==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@snazzah/davey-wasm32-wasi@0.1.11':
+    resolution: {integrity: sha512-rKOwZ/0J8lp+4VEyOdMDBRP9KR+PksZpa9V1Qn0veMzy4FqTVKthkxwGqewheFe0SFg9fdvt798l/PBFrfDeZw==}
+    engines: {node: '>=14.0.0'}
+    cpu: [wasm32]
+
+  '@snazzah/davey-win32-arm64-msvc@0.1.11':
+    resolution: {integrity: sha512-5fptJU4tX901m3mj0SHiBljMrPT4ZEsynbBhR7bK1yn9TY1jjyhN8EFi7QF5IWtUEni+0mia2BCMHZ5ZkmFZqQ==}
+    engines: {node: '>= 10'}
+    cpu: [arm64]
+    os: [win32]
+
+  '@snazzah/davey-win32-ia32-msvc@0.1.11':
+    resolution: {integrity: sha512-ualexn8SeLsiMHhWfzVrzRcjHgcBapg++FPaVgJJxoh2S/jCRiklXOu3luqIZdJdNKvhe2V9SwO/cImPeIIBKw==}
+    engines: {node: '>= 10'}
+    cpu: [ia32]
+    os: [win32]
+
+  '@snazzah/davey-win32-x64-msvc@0.1.11':
+    resolution: {integrity: sha512-muNhc8UKXtknzsH/w4AIkbPR2I8BuvApn0pDXar0IEvY8PCjqU/M8MPbOOEYwQVvQRMwVTgExtxzrkBPSXB4nA==}
+    engines: {node: '>= 10'}
+    cpu: [x64]
+    os: [win32]
+
+  '@snazzah/davey@0.1.11':
+    resolution: {integrity: sha512-oBN+msHzPnm1M5DDx3wVD7iBwpNXFUtkh2MrAbUJu0OhKjliLChi28hq++mu1+qdMpAVQO5JKAvQQxYVbyneiw==}
+    engines: {node: '>= 10'}
+
   '@tabby_ai/hijri-converter@1.0.5':
     resolution: {integrity: sha512-r5bClKrcIusDoo049dSL8CawnHR6mRdDwhlQuIgZRNty68q0x8k3Lf1BtPAMxRf/GgnHBnIO4ujd3+GQdLWzxQ==}
     engines: {node: '>=16.0.0'}
@@ -1597,6 +1707,9 @@ packages:
     resolution: {integrity: sha512-0Lu6y5t+tvlTJMTO7oh5NSpJfpg/5D41LlThfepTixPYkJ0sE2Jj0m0f6yYqujBwIXlId87e234+MxG3D3g7kg==}
     peerDependencies:
       react: ^18 || ^19
+
+  '@tybys/wasm-util@0.10.1':
+    resolution: {integrity: sha512-9tTaPJLSiejZKx+Bmog4uSubteqTvFrVrURwkmHixBo0G4seD0zUxp98E1DzUBJxLQ3NPwXrGKDiVjwx/DpPsg==}
 
   '@types/babel__core@7.20.5':
     resolution: {integrity: sha512-qoQprZvz5wQFJwMDqeseRXWv3rqMvhgpbXFfVyWhbx9X47POIA6i/+dXefEmZKoAgOaTdaIgNSMqMIU61yRyzA==}
@@ -1665,6 +1778,10 @@ packages:
 
   '@types/http-errors@2.0.5':
     resolution: {integrity: sha512-r8Tayk8HJnX0FztbZN7oVqGccWgw98T/0neJphO91KkmOzug1KkofZURD4UaD5uH8AqcFLfdPErnBod0u71/qg==}
+
+  '@types/libsodium-wrappers@0.8.2':
+    resolution: {integrity: sha512-+2IDfSULPUskSjIYfZl9suIUsIE5PXwoKZiE/j0MZWd+M9nEGvJDsk/ztMZKNhL1lBL+1CaypW0dQSjqPW2dMg==}
+    deprecated: This is a stub types definition. libsodium-wrappers provides its own type definitions, so you do not need this installed.
 
   '@types/node@25.3.5':
     resolution: {integrity: sha512-oX8xrhvpiyRCQkG1MFchB09f+cXftgIXb3a7UUa4Y3wpmZPw5tyZGTLWhlESOLq1Rq6oDlc8npVU2/9xiCuXMA==}
@@ -2413,6 +2530,12 @@ packages:
     resolution: {integrity: sha512-KZ9W9nWDT7rF7Dazg8xyLHGLrmpgq2nVNFUckhqdW3szVP6YhCpp/RAnpmVExA9JvrMynjwSLVrEj3AepHR6ew==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
 
+  libsodium-wrappers@0.8.4:
+    resolution: {integrity: sha512-mu8aAWucZjTB5O/BtGXtW4e1agy7uHxNYG7zPthmmD1jU43LCDmSWZLN4JhflbdPXj3yDO4lxM1O9hLDgIOXDw==}
+
+  libsodium@0.8.4:
+    resolution: {integrity: sha512-lMcYaRi0zcs7tarATsQUYC7rstliIXZuoq0c6zXSgNtSNtdvBgkSegjWhpMJAXzKX3SUSwIp7+zEsob+j3LuRw==}
+
   lightningcss-linux-x64-gnu@1.31.1:
     resolution: {integrity: sha512-xGlFWRMl+0KvUhgySdIaReQdB4FNudfUTARn7q0hh/V67PVGCs3ADFjw+6++kG1RNd0zdGRlEKa+T13/tQjPMA==}
     engines: {node: '>= 12.0.0'}
@@ -2686,6 +2809,23 @@ packages:
   pretty-ms@9.3.0:
     resolution: {integrity: sha512-gjVS5hOP+M3wMm5nmNOucbIrqudzs9v/57bWRHQWLYklXqoXKrVfYW2W9+glfGsqtPgpiz5WwyEEB+ksXIx3gQ==}
     engines: {node: '>=18'}
+
+  prism-media@1.3.5:
+    resolution: {integrity: sha512-IQdl0Q01m4LrkN1EGIE9lphov5Hy7WWlH6ulf5QdGePLlPas9p2mhgddTEHrlaXYjjFToM1/rWuwF37VF4taaA==}
+    peerDependencies:
+      '@discordjs/opus': '>=0.8.0 <1.0.0'
+      ffmpeg-static: ^5.0.2 || ^4.2.7 || ^3.0.0 || ^2.4.0
+      node-opus: ^0.3.3
+      opusscript: ^0.0.8
+    peerDependenciesMeta:
+      '@discordjs/opus':
+        optional: true
+      ffmpeg-static:
+        optional: true
+      node-opus:
+        optional: true
+      opusscript:
+        optional: true
 
   process-warning@5.0.0:
     resolution: {integrity: sha512-a39t9ApHNx2L4+HBnQKqxxHNs1r7KF+Intd8Q/g1bUh6q0WIp9voPXJ/x0j+ZL45KF1pJd9+q2jLIRMfvEshkA==}
@@ -3359,6 +3499,24 @@ snapshots:
     dependencies:
       discord-api-types: 0.38.42
 
+  '@discordjs/voice@0.19.2(@emnapi/runtime@1.10.0)':
+    dependencies:
+      '@snazzah/davey': 0.1.11(@emnapi/runtime@1.10.0)
+      '@types/ws': 8.18.1
+      discord-api-types: 0.38.42
+      prism-media: 1.3.5
+      tslib: 2.8.1
+      ws: 8.20.0
+    transitivePeerDependencies:
+      - '@discordjs/opus'
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+      - bufferutil
+      - ffmpeg-static
+      - node-opus
+      - opusscript
+      - utf-8-validate
+
   '@discordjs/ws@1.2.3':
     dependencies:
       '@discordjs/collection': 2.1.1
@@ -3506,6 +3664,12 @@ snapshots:
     dependencies:
       '@jridgewell/resolve-uri': 3.1.2
       '@jridgewell/sourcemap-codec': 1.5.5
+
+  '@napi-rs/wasm-runtime@1.1.4(@emnapi/runtime@1.10.0)':
+    dependencies:
+      '@emnapi/runtime': 1.10.0
+      '@tybys/wasm-util': 0.10.1
+    optional: true
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
@@ -4411,6 +4575,73 @@ snapshots:
 
   '@sindresorhus/merge-streams@4.0.0': {}
 
+  '@snazzah/davey-android-arm-eabi@0.1.11':
+    optional: true
+
+  '@snazzah/davey-android-arm64@0.1.11':
+    optional: true
+
+  '@snazzah/davey-darwin-arm64@0.1.11':
+    optional: true
+
+  '@snazzah/davey-darwin-x64@0.1.11':
+    optional: true
+
+  '@snazzah/davey-freebsd-x64@0.1.11':
+    optional: true
+
+  '@snazzah/davey-linux-arm-gnueabihf@0.1.11':
+    optional: true
+
+  '@snazzah/davey-linux-arm64-gnu@0.1.11':
+    optional: true
+
+  '@snazzah/davey-linux-arm64-musl@0.1.11':
+    optional: true
+
+  '@snazzah/davey-linux-x64-gnu@0.1.11':
+    optional: true
+
+  '@snazzah/davey-linux-x64-musl@0.1.11':
+    optional: true
+
+  '@snazzah/davey-wasm32-wasi@0.1.11(@emnapi/runtime@1.10.0)':
+    dependencies:
+      '@napi-rs/wasm-runtime': 1.1.4(@emnapi/runtime@1.10.0)
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+    optional: true
+
+  '@snazzah/davey-win32-arm64-msvc@0.1.11':
+    optional: true
+
+  '@snazzah/davey-win32-ia32-msvc@0.1.11':
+    optional: true
+
+  '@snazzah/davey-win32-x64-msvc@0.1.11':
+    optional: true
+
+  '@snazzah/davey@0.1.11(@emnapi/runtime@1.10.0)':
+    optionalDependencies:
+      '@snazzah/davey-android-arm-eabi': 0.1.11
+      '@snazzah/davey-android-arm64': 0.1.11
+      '@snazzah/davey-darwin-arm64': 0.1.11
+      '@snazzah/davey-darwin-x64': 0.1.11
+      '@snazzah/davey-freebsd-x64': 0.1.11
+      '@snazzah/davey-linux-arm-gnueabihf': 0.1.11
+      '@snazzah/davey-linux-arm64-gnu': 0.1.11
+      '@snazzah/davey-linux-arm64-musl': 0.1.11
+      '@snazzah/davey-linux-x64-gnu': 0.1.11
+      '@snazzah/davey-linux-x64-musl': 0.1.11
+      '@snazzah/davey-wasm32-wasi': 0.1.11(@emnapi/runtime@1.10.0)
+      '@snazzah/davey-win32-arm64-msvc': 0.1.11
+      '@snazzah/davey-win32-ia32-msvc': 0.1.11
+      '@snazzah/davey-win32-x64-msvc': 0.1.11
+    transitivePeerDependencies:
+      - '@emnapi/core'
+      - '@emnapi/runtime'
+
   '@tabby_ai/hijri-converter@1.0.5': {}
 
   '@tailwindcss/node@4.2.1':
@@ -4447,6 +4678,11 @@ snapshots:
     dependencies:
       '@tanstack/query-core': 5.90.20
       react: 19.1.0
+
+  '@tybys/wasm-util@0.10.1':
+    dependencies:
+      tslib: 2.8.1
+    optional: true
 
   '@types/babel__core@7.20.5':
     dependencies:
@@ -4530,6 +4766,10 @@ snapshots:
       '@types/unist': 3.0.3
 
   '@types/http-errors@2.0.5': {}
+
+  '@types/libsodium-wrappers@0.8.2':
+    dependencies:
+      libsodium-wrappers: 0.8.4
 
   '@types/node@25.3.5':
     dependencies:
@@ -5179,6 +5419,12 @@ snapshots:
 
   leven@4.1.0: {}
 
+  libsodium-wrappers@0.8.4:
+    dependencies:
+      libsodium: 0.8.4
+
+  libsodium@0.8.4: {}
+
   lightningcss-linux-x64-gnu@1.31.1:
     optional: true
 
@@ -5463,6 +5709,8 @@ snapshots:
   pretty-ms@9.3.0:
     dependencies:
       parse-ms: 4.0.0
+
+  prism-media@1.3.5: {}
 
   process-warning@5.0.0: {}
 
