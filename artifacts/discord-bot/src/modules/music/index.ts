@@ -176,7 +176,51 @@ async function extractCoverColor(url: string): Promise<ColorResolvable> {
   }
 }
 
-async function buildReleaseEmbeds(album: DeezerAlbum): Promise<EmbedBuilder[]> {
+function isRecentRelease(releaseDate: string | null | undefined): boolean {
+  if (!releaseDate) return true; // unknown → assume new
+  const d = new Date(releaseDate);
+  if (isNaN(d.getTime())) return true;
+  const ageMs = Date.now() - d.getTime();
+  return ageMs < 30 * 24 * 60 * 60 * 1000; // < 30 days
+}
+
+function isRecentYear(year: string | null | undefined): boolean {
+  if (!year) return true;
+  const y = parseInt(year);
+  if (isNaN(y)) return true;
+  return y >= new Date().getFullYear();
+}
+
+function cleanCopyUrl(url: string): string {
+  try {
+    const u = new URL(url);
+    const tracking = ["si", "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content", "context", "pi", "go", "nd", "_branch_match_id", "feature", "app", "ref"];
+    tracking.forEach(p => u.searchParams.delete(p));
+    return u.toString();
+  } catch {
+    return url;
+  }
+}
+
+function buildCopyRow(url: string): ActionRowBuilder<ButtonBuilder> {
+  const clean = cleanCopyUrl(url);
+  // Discord custom_id limit: 100 chars. "mu_copy:" prefix = 8, leaves 92 for URL.
+  const idUrl = clean.length <= 92 ? clean : url.slice(0, 92);
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`mu_copy:${idUrl}`)
+      .setLabel("Copy")
+      .setEmoji("📋")
+      .setStyle(ButtonStyle.Secondary)
+  );
+}
+
+interface PostPayload {
+  embeds: EmbedBuilder[];
+  components: ActionRowBuilder<ButtonBuilder>[];
+}
+
+async function buildReleaseEmbeds(album: DeezerAlbum, copyUrl?: string): Promise<PostPayload> {
   const type        = recordTypeLabel(album.record_type);
   const artistName  = album.artist?.name ?? "Unknown Artist";
   const cover       = album.cover_xl || album.cover_big;
@@ -185,32 +229,27 @@ async function buildReleaseEmbeds(album: DeezerAlbum): Promise<EmbedBuilder[]> {
   const trackCount  = album.nb_tracks
     ? `${album.nb_tracks} track${album.nb_tracks !== 1 ? "s" : ""}`
     : "";
+  const isNew       = isRecentRelease(album.release_date);
 
-  const footerParts: string[] = [];
-  if (releaseDate) footerParts.push(`Released ${releaseDate}`);
-  if (trackCount)  footerParts.push(trackCount);
+  const headerLabel = isNew ? `NEW ${type.toUpperCase()} · OUT NOW` : `${type.toUpperCase()}`;
+
+  const metaParts: string[] = [type];
+  if (trackCount)  metaParts.push(trackCount);
+  if (releaseDate) metaParts.push(releaseDate);
 
   const main = new EmbedBuilder()
     .setColor(color)
-    .setAuthor({ name: `🎵 New ${type}` })
-    .setTitle(album.title)
-    .setURL(album.link || null)
-    .setDescription(`by ${toBold(artistName)}`);
+    .setAuthor({ name: headerLabel })
+    .setDescription(`# ${album.title}\nby ${toBold(artistName)}`)
+    .setFooter({ text: metaParts.join("  •  ") });
 
-  if (cover)              main.setImage(cover);
-  if (footerParts.length) main.setFooter({ text: footerParts.join("  •  ") });
+  if (cover) main.setImage(cover);
 
-  const embeds: EmbedBuilder[] = [main];
-
-  if (album.link) {
-    embeds.push(
-      new EmbedBuilder()
-        .setColor(color)
-        .setDescription(`🎧 **[Listen on Deezer](${album.link})**`)
-    );
-  }
-
-  return embeds;
+  const url = copyUrl ?? album.link;
+  return {
+    embeds: [main],
+    components: url ? [buildCopyRow(url)] : [],
+  };
 }
 
 function decodeHtmlEntities(str: string): string {
@@ -351,46 +390,45 @@ async function searchDeezerForRelease(artist: string, title: string): Promise<De
   return await deezerFetch<DeezerAlbum>(`/album/${albumId}`);
 }
 
-async function buildExternalReleaseEmbeds(meta: UrlMetadata, url: string): Promise<EmbedBuilder[]> {
-  const platform = detectPlatform(url);
-  const cover    = meta.image;
-  const color    = cover ? await extractCoverColor(cover) : FALLBACK_COLOR;
-  const type     = meta.recordType || "Drop";
+async function buildExternalReleaseEmbeds(meta: UrlMetadata, url: string): Promise<PostPayload> {
+  const cover  = meta.image;
+  const color  = cover ? await extractCoverColor(cover) : FALLBACK_COLOR;
+  const type   = meta.recordType || "Release";
+  const isNew  = isRecentYear(meta.year);
 
-  const footerParts: string[] = [];
-  if (meta.year)       footerParts.push(`Released ${meta.year}`);
-  if (meta.trackCount) footerParts.push(`${meta.trackCount} track${meta.trackCount !== 1 ? "s" : ""}`);
+  const headerLabel = isNew ? `NEW ${type.toUpperCase()} · OUT NOW` : `${type.toUpperCase()}`;
+
+  const title  = meta.title || "Untitled";
+  const artist = meta.artist;
+
+  const metaParts: string[] = [type];
+  if (meta.trackCount) metaParts.push(`${meta.trackCount} track${meta.trackCount !== 1 ? "s" : ""}`);
+  if (meta.year)       metaParts.push(meta.year);
 
   const main = new EmbedBuilder()
     .setColor(color)
-    .setAuthor({ name: `🎵 New ${type}` })
-    .setURL(url);
+    .setAuthor({ name: headerLabel })
+    .setDescription(artist ? `# ${title}\nby ${toBold(artist)}` : `# ${title}`)
+    .setFooter({ text: metaParts.join("  •  ") });
 
-  if (meta.title) main.setTitle(meta.title);
-  if (meta.artist) main.setDescription(`by ${toBold(meta.artist)}`);
   if (cover) main.setImage(cover);
-  if (footerParts.length) main.setFooter({ text: footerParts.join("  •  ") });
 
-  const embeds: EmbedBuilder[] = [main];
-  embeds.push(
-    new EmbedBuilder()
-      .setColor(color)
-      .setDescription(`🎧 **[Listen on ${platform}](${url})**`)
-  );
-
-  return embeds;
+  return {
+    embeds: [main],
+    components: [buildCopyRow(url)],
+  };
 }
 
-function buildGenericDropEmbeds(url: string, djName: string): EmbedBuilder[] {
-  const platform = detectPlatform(url);
-  return [
-    new EmbedBuilder()
-      .setColor(FALLBACK_COLOR)
-      .setDescription(`🎵 ${toBold("New Drop")} — shared by **${djName}**`),
-    new EmbedBuilder()
-      .setColor(FALLBACK_COLOR)
-      .setDescription(`🎧 **[Listen on ${platform}](${url})**`),
-  ];
+function buildGenericDropEmbeds(url: string, _djName: string): PostPayload {
+  return {
+    embeds: [
+      new EmbedBuilder()
+        .setColor(FALLBACK_COLOR)
+        .setAuthor({ name: "NEW DROP · OUT NOW" })
+        .setDescription(`# ${detectPlatform(url)} Release`),
+    ],
+    components: [buildCopyRow(url)],
+  };
 }
 
 async function getMusicConfig(guildId: string): Promise<{ djRoleId: string | null; channelId: string | null }> {
@@ -451,7 +489,7 @@ async function handlePost(message: Message): Promise<void> {
     if (albumId) {
       const album = await deezerFetch<DeezerAlbum>(`/album/${albumId}`);
       if (album) {
-        await targetChannel.send({ embeds: await buildReleaseEmbeds(album) });
+        await targetChannel.send(await buildReleaseEmbeds(album, url));
         return;
       }
     }
@@ -463,27 +501,17 @@ async function handlePost(message: Message): Promise<void> {
     if (meta.artist && meta.title) {
       const enriched = await searchDeezerForRelease(meta.artist, meta.title);
       if (enriched) {
-        // Build the full release embed but keep the original platform "Listen on" link
-        const platform = detectPlatform(url);
-        const fullEmbeds = await buildReleaseEmbeds(enriched);
-        // Replace the trailing Deezer "Listen on" embed with one pointing to the original URL
-        if (fullEmbeds.length > 1) {
-          const color = fullEmbeds[0].data.color ?? FALLBACK_COLOR;
-          fullEmbeds[fullEmbeds.length - 1] = new EmbedBuilder()
-            .setColor(color as ColorResolvable)
-            .setDescription(`🎧 **[Listen on ${platform}](${url})**`);
-        }
-        await targetChannel.send({ embeds: fullEmbeds });
+        await targetChannel.send(await buildReleaseEmbeds(enriched, url));
         return;
       }
     }
 
-    await targetChannel.send({ embeds: await buildExternalReleaseEmbeds(meta, url) });
+    await targetChannel.send(await buildExternalReleaseEmbeds(meta, url));
     return;
   }
 
   const djName = message.member?.displayName ?? message.author.username;
-  await targetChannel.send({ embeds: buildGenericDropEmbeds(url, djName) });
+  await targetChannel.send(buildGenericDropEmbeds(url, djName));
 }
 
 export const pendingAdd = new Map<string, { artists: DeezerArtist[]; guildId: string; channelId: string }>();
@@ -648,7 +676,7 @@ async function checkNewReleases(client: Client): Promise<void> {
         const album = await deezerFetch<DeezerAlbum>(`/album/${latest.id}`);
         if (!album) continue;
 
-        await channel.send({ embeds: await buildReleaseEmbeds(album) });
+        await channel.send(await buildReleaseEmbeds(album, album.link));
 
         await pool.query(
           "INSERT INTO music_posted (guild_id, deezer_album_id) VALUES ($1, $2) ON CONFLICT DO NOTHING",

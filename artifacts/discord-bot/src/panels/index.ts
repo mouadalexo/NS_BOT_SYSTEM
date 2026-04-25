@@ -607,6 +607,12 @@ export async function registerPanelCommands(client: Client) {
             await handleMusicPickCancel(interaction as ButtonInteraction);
           } else if (interaction.customId.startsWith("mu_pick:")) {
             await handleMusicPickButton(interaction as ButtonInteraction);
+          } else if (interaction.customId.startsWith("mu_copy:")) {
+            const url = interaction.customId.slice("mu_copy:".length);
+            await (interaction as ButtonInteraction).reply({
+              content: `\`\`\`\n${url}\n\`\`\`\n*Tap and hold the link above to copy it, then paste into your music bot.*`,
+              ephemeral: true,
+            });
           }
         } catch (err) {
           console.error("Music button error:", err);
