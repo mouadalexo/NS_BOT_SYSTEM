@@ -223,9 +223,13 @@ export function registerMoveModule(client: Client) {
         .setDescription(`${why}\n\nDo you accept?`)
         .setFooter({ text: "Night Stars \u2022 Move \u2022 expires in 60s" });
 
+      // Send the request in the target's voice channel text chat so they see it
+      const targetVoiceChannel = target.voice.channel;
+      const sendChannel = targetVoiceChannel?.isTextBased() ? targetVoiceChannel : message.channel;
+
       let panelMsg;
       try {
-        panelMsg = await message.channel.send({
+        panelMsg = await sendChannel.send({
           content: `<@${target.id}>`,
           embeds: [panel],
           components: [decisionRow(reqId)],
