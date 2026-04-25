@@ -213,6 +213,174 @@ async function buildReleaseEmbeds(album: DeezerAlbum): Promise<EmbedBuilder[]> {
   return embeds;
 }
 
+function decodeHtmlEntities(str: string): string {
+  return str
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&#x27;/g, "'")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(parseInt(n)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCharCode(parseInt(n, 16)));
+}
+
+interface UrlMetadata {
+  title: string | null;
+  artist: string | null;
+  image: string | null;
+  type: string | null;        // "music.album" | "music.song" | etc.
+  recordType: string | null;  // "Album" | "Single" | "EP" | null
+  trackCount: number | null;
+  year: string | null;
+}
+
+async function fetchUrlMetadata(url: string): Promise<UrlMetadata | null> {
+  try {
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Mozilla/5.0 (compatible; NSBot/1.0; +https://github.com/mouadalexo/ns_bot)",
+        "Accept": "text/html,application/xhtml+xml",
+      },
+      redirect: "follow",
+    });
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    function meta(prop: string): string | null {
+      const re1 = new RegExp(`<meta[^>]+(?:property|name)=["']${prop}["'][^>]*content=["']([^"']+)["']`, "i");
+      const re2 = new RegExp(`<meta[^>]+content=["']([^"']+)["'][^>]+(?:property|name)=["']${prop}["']`, "i");
+      const m1 = html.match(re1); if (m1) return decodeHtmlEntities(m1[1]);
+      const m2 = html.match(re2); if (m2) return decodeHtmlEntities(m2[1]);
+      return null;
+    }
+
+    const ogTitle       = meta("og:title");
+    const ogDescription = meta("og:description");
+    const ogImage       = meta("og:image");
+    const ogType        = meta("og:type");
+    const musicArtist   = meta("music:musician") || meta("music:musician:profile") || meta("music:creator");
+    const musicRelease  = meta("music:release_date") || meta("music:album:release_date");
+    const musicAlbum    = meta("music:album");
+
+    let artist: string | null = musicArtist;
+    let recordType: string | null = null;
+    let trackCount: number | null = null;
+    let year: string | null = null;
+
+    if (ogDescription) {
+      // Spotify: "Album · 2024" / "Song · Artist · 2024" / "Artist · Album · 2024"
+      // Apple Music: "Album · Artist · 2024"
+      const parts = ogDescription.split(/[·•]/).map(s => s.trim()).filter(Boolean);
+
+      if (!artist && parts.length >= 2) {
+        // Pick the part that's not a year, not a track-count, not a record-type label
+        const candidates = parts.filter(p =>
+          !/^\d{4}$/.test(p) &&
+          !/^\d+\s+songs?$/i.test(p) &&
+          !/^(album|single|ep|compilation|playlist|song|track)$/i.test(p)
+        );
+        if (candidates.length) artist = candidates[candidates.length - 1];
+      }
+
+      const yMatch = parts.find(p => /^\d{4}$/.test(p));
+      if (yMatch) year = yMatch;
+
+      const tMatch = parts.find(p => /^\d+\s+songs?$/i.test(p));
+      if (tMatch) trackCount = parseInt(tMatch);
+
+      const rMatch = parts.find(p => /^(album|single|ep|compilation)$/i.test(p));
+      if (rMatch) recordType = rMatch.charAt(0).toUpperCase() + rMatch.slice(1).toLowerCase();
+    }
+
+    // og:type → record type fallback
+    if (!recordType && ogType) {
+      if (ogType.includes("album"))    recordType = "Album";
+      else if (ogType.includes("song")) recordType = "Track";
+    }
+
+    // Apple Music album titles often look like "Album Name - Single by Artist"
+    let title = ogTitle;
+    if (title) {
+      const appleMatch = title.match(/^(.+?)(?:\s*-\s*(Single|EP|Album))?\s+by\s+(.+)$/i);
+      if (appleMatch) {
+        title = appleMatch[1].trim();
+        if (!recordType && appleMatch[2]) recordType = appleMatch[2];
+        if (!artist) artist = appleMatch[3].trim();
+      }
+    }
+
+    if (musicAlbum && (!title || ogType?.includes("song"))) {
+      // For tracks, use album name from music:album
+    }
+    if (musicRelease && !year) {
+      const ym = musicRelease.match(/^(\d{4})/);
+      if (ym) year = ym[1];
+    }
+
+    return { title, artist, image: ogImage, type: ogType, recordType, trackCount, year };
+  } catch {
+    return null;
+  }
+}
+
+async function searchDeezerForRelease(artist: string, title: string): Promise<DeezerAlbum | null> {
+  // Try strict search first
+  const strict = await deezerFetch<{ data: Array<{ id: number }> }>(
+    `/search/album?q=${encodeURIComponent(`artist:"${artist}" album:"${title}"`)}&limit=1`
+  );
+  let albumId = strict?.data?.[0]?.id;
+
+  if (!albumId) {
+    const loose = await deezerFetch<{ data: Array<{ id: number }> }>(
+      `/search/album?q=${encodeURIComponent(`${artist} ${title}`)}&limit=1`
+    );
+    albumId = loose?.data?.[0]?.id;
+  }
+
+  if (!albumId) {
+    // Last attempt: search tracks then take the album
+    const trackRes = await deezerFetch<{ data: Array<{ album: { id: number } }> }>(
+      `/search/track?q=${encodeURIComponent(`${artist} ${title}`)}&limit=1`
+    );
+    albumId = trackRes?.data?.[0]?.album?.id;
+  }
+
+  if (!albumId) return null;
+  return await deezerFetch<DeezerAlbum>(`/album/${albumId}`);
+}
+
+async function buildExternalReleaseEmbeds(meta: UrlMetadata, url: string): Promise<EmbedBuilder[]> {
+  const platform = detectPlatform(url);
+  const cover    = meta.image;
+  const color    = cover ? await extractCoverColor(cover) : FALLBACK_COLOR;
+  const type     = meta.recordType || "Drop";
+
+  const footerParts: string[] = [];
+  if (meta.year)       footerParts.push(`Released ${meta.year}`);
+  if (meta.trackCount) footerParts.push(`${meta.trackCount} track${meta.trackCount !== 1 ? "s" : ""}`);
+
+  const main = new EmbedBuilder()
+    .setColor(color)
+    .setAuthor({ name: `🎵 New ${type}` })
+    .setURL(url);
+
+  if (meta.title) main.setTitle(meta.title);
+  if (meta.artist) main.setDescription(`by ${toBold(meta.artist)}`);
+  if (cover) main.setImage(cover);
+  if (footerParts.length) main.setFooter({ text: footerParts.join("  •  ") });
+
+  const embeds: EmbedBuilder[] = [main];
+  embeds.push(
+    new EmbedBuilder()
+      .setColor(color)
+      .setDescription(`🎧 **[Listen on ${platform}](${url})**`)
+  );
+
+  return embeds;
+}
+
 function buildGenericDropEmbeds(url: string, djName: string): EmbedBuilder[] {
   const platform = detectPlatform(url);
   return [
@@ -287,6 +455,31 @@ async function handlePost(message: Message): Promise<void> {
         return;
       }
     }
+  }
+
+  // Non-Deezer URL: extract og: metadata and try to enrich via Deezer search
+  const meta = await fetchUrlMetadata(url);
+  if (meta && (meta.title || meta.artist)) {
+    if (meta.artist && meta.title) {
+      const enriched = await searchDeezerForRelease(meta.artist, meta.title);
+      if (enriched) {
+        // Build the full release embed but keep the original platform "Listen on" link
+        const platform = detectPlatform(url);
+        const fullEmbeds = await buildReleaseEmbeds(enriched);
+        // Replace the trailing Deezer "Listen on" embed with one pointing to the original URL
+        if (fullEmbeds.length > 1) {
+          const color = fullEmbeds[0].data.color ?? FALLBACK_COLOR;
+          fullEmbeds[fullEmbeds.length - 1] = new EmbedBuilder()
+            .setColor(color as ColorResolvable)
+            .setDescription(`🎧 **[Listen on ${platform}](${url})**`);
+        }
+        await targetChannel.send({ embeds: fullEmbeds });
+        return;
+      }
+    }
+
+    await targetChannel.send({ embeds: await buildExternalReleaseEmbeds(meta, url) });
+    return;
   }
 
   const djName = message.member?.displayName ?? message.author.username;
