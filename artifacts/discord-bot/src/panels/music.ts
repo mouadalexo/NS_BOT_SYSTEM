@@ -22,6 +22,7 @@ import {
   searchArtists,
   commitAddArtist,
   removeArtistById,
+  resolveArtistFromDeezerLink,
   pendingAdd,
   type DeezerArtist,
 } from "../modules/music/index.js";
@@ -167,11 +168,11 @@ export async function handleMusicAddArtistButton(interaction: ButtonInteraction)
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("artist_query")
-          .setLabel("Artist name")
-          .setPlaceholder("e.g. Daft Punk")
+          .setLabel("Artist name OR Deezer link")
+          .setPlaceholder("Daft Punk  —  or  —  https://deezer.com/artist/123")
           .setStyle(TextInputStyle.Short)
           .setMinLength(1)
-          .setMaxLength(80)
+          .setMaxLength(300)
           .setRequired(true)
       )
     );
@@ -187,9 +188,28 @@ export async function handleMusicAddModalSubmit(interaction: ModalSubmitInteract
 
   await interaction.deferReply({ ephemeral: true });
 
+  // If the input is a Deezer link (artist/album/track), resolve directly to the artist
+  if (/^https?:\/\/(www\.)?deezer\.com\//i.test(query)) {
+    const direct = await resolveArtistFromDeezerLink(query);
+    if (!direct) {
+      await interaction.editReply({
+        content: `❌ Couldn't resolve that Deezer link. Make sure it's an artist, album, or track URL from \`deezer.com\`.`,
+      });
+      return;
+    }
+    const cfg = await getMusicConfig(interaction.guildId!);
+    await commitAddArtist(interaction.client, interaction.guildId!, cfg.notification_channel_id, direct);
+    await interaction.editReply({
+      content: `✅ **${direct.name}** added to music tracking from link.\nReopen \`/music\` to see the updated list.`,
+    });
+    return;
+  }
+
   const artists = await searchArtists(query);
   if (!artists.length) {
-    await interaction.editReply({ content: `❌ No artist found for \`${query}\` on Deezer.` });
+    await interaction.editReply({
+      content: `❌ No artist found for \`${query}\` on Deezer.\n\n💡 **Tip:** open the artist's page on Deezer, copy the link from the address bar, and paste it here instead.`,
+    });
     return;
   }
 

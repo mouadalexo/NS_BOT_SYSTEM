@@ -534,6 +534,29 @@ export async function searchArtists(query: string, limit = 5): Promise<DeezerArt
   return searchRes?.data?.slice(0, 3) ?? [];
 }
 
+/**
+ * Resolve an artist directly from a Deezer link (artist URL, or any album/track URL).
+ * Returns null if the URL doesn't point to a Deezer resource we can resolve.
+ */
+export async function resolveArtistFromDeezerLink(input: string): Promise<DeezerArtist | null> {
+  const parsed = parseDeezerUrl(input);
+  if (!parsed) return null;
+
+  let artistId: string | null = null;
+  if (parsed.type === "artist") {
+    artistId = parsed.id;
+  } else if (parsed.type === "album") {
+    const album = await deezerFetch<DeezerAlbum>(`/album/${parsed.id}`);
+    artistId = album?.artist?.id?.toString() ?? null;
+  } else if (parsed.type === "track") {
+    const track = await deezerFetch<DeezerTrack>(`/track/${parsed.id}`);
+    artistId = track?.artist?.id?.toString() ?? null;
+  }
+
+  if (!artistId) return null;
+  return await deezerFetch<DeezerArtist>(`/artist/${artistId}`);
+}
+
 async function handleAdd(message: Message): Promise<void> {
   if (!await hasDjAccess(message)) {
     await tempReply(message, "❌ You need the **DJ** role to use `=add`.");
