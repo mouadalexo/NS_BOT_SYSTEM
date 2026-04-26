@@ -641,7 +641,7 @@ async function handlePost(message: Message): Promise<void> {
     return;
   }
 
-  const url = message.content.trim().replace(/^=(?:post|album)\s*/i, "").trim();
+  const url = message.content.trim().replace(/^=album\s*/i, "").trim();
   if (!url || !url.startsWith("http")) {
     await tempReply(message, "❌ Usage: `=album <music link>`");
     return;
@@ -903,7 +903,7 @@ export function registerMusicModule(client: Client): void {
 
     const raw = message.content.trim();
 
-    if (/^=(?:post|album)(\s|$)/i.test(raw)) {
+    if (/^=album(\s|$)/i.test(raw)) {
       await handlePost(message);
       return;
     }
