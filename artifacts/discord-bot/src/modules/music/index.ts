@@ -650,7 +650,6 @@ async function handlePost(message: Message): Promise<void> {
     return;
   }
   if (!await hasDjAccess(message)) {
-    await tempReply(message, "❌ You need the **DJ** role to use `=album`.");
     return;
   }
 
