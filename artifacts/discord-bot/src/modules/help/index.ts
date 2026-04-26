@@ -81,7 +81,7 @@ const MEMBER_CATEGORIES: CategoryDef[] = [
     label: "Music Commands",
     emoji: "\uD83C\uDFB5",
     buildCommands: () => [
-      { syntax: "=playlist <link>", desc: "Post playlist only" },
+      { syntax: "=playlist <link>", desc: "Post playlist in the playlist channel" },
       { syntax: "=artists", desc: "List all artists tracked for auto new-release notifications" },
     ],
   },
@@ -153,9 +153,9 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     label: "Announcement Commands",
     emoji: "\uD83D\uDCE2",
     buildCommands: () => [
-      { syntax: "=an <message>", desc: "Send a styled announcement to the configured channel" },
-      { syntax: "=ann <message>", desc: "Alias of =an — send a styled announcement" },
-      { syntax: "=event <message>", desc: "Send an event announcement to the configured event channel" },
+      { syntax: "=an <message>", desc: "Post a quick inline announcement directly to the channel — supports [RoleName] tags and emoji codes" },
+      { syntax: "=ann", desc: "Open the full announcement builder panel (title, description, image, tags, save/load template)" },
+      { syntax: "=event", desc: "Open the event announcement builder panel (event hoster role required)" },
     ],
   },
   {
