@@ -76,6 +76,15 @@ const MEMBER_CATEGORIES: CategoryDef[] = [
       { syntax: `${p.pvs}adopt @user`, desc: "Send an adoption request — target accepts/rejects via buttons" },
     ],
   },
+  {
+    key: "music",
+    label: "Music Commands",
+    emoji: "\uD83C\uDFB5",
+    buildCommands: () => [
+      { syntax: "=playlist <link>", desc: "Post a playlist embed (Playlist or DJ role required) — Deezer, Spotify, Apple Music, YouTube, SoundCloud, TIDAL, Amazon Music" },
+      { syntax: "=artists", desc: "List all artists tracked for auto new-release notifications" },
+    ],
+  },
 ];
 
 // ── STAFF CATEGORIES ────────────────────────────────────────────────────────
@@ -143,8 +152,10 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     key: "ann",
     label: "Announcement Commands",
     emoji: "\uD83D\uDCE2",
-    buildCommands: (p) => [
-      { syntax: `${p.ann}<message>`, desc: "Send a styled announcement to the configured channel" },
+    buildCommands: () => [
+      { syntax: "=an <message>", desc: "Send a styled announcement to the configured channel" },
+      { syntax: "=ann <message>", desc: "Alias of =an — send a styled announcement" },
+      { syntax: "=event <message>", desc: "Send an event announcement to the configured event channel" },
     ],
   },
   {
@@ -169,10 +180,11 @@ const STAFF_CATEGORIES: CategoryDef[] = [
 // ── EMBED + COMPONENT BUILDERS ──────────────────────────────────────────────
 
 function buildMainEmbed(scope: "m" | "s"): EmbedBuilder {
-  const sub = scope === "m" ? "Member Commands" : "Staff & Setup Commands";
+  const title = scope === "m" ? "ns System members help" : "ns System staff help";
+  const sub   = scope === "m" ? "Member Commands" : "Staff & Setup Commands";
   return new EmbedBuilder()
     .setColor(COLOR)
-    .setTitle("Select A Command Category!")
+    .setTitle(title)
     .setDescription(`Choose which category of help you want to check below.\n\n_${sub}_`)
     .setFooter({ text: FOOTER });
 }
@@ -180,7 +192,7 @@ function buildMainEmbed(scope: "m" | "s"): EmbedBuilder {
 function buildSelectRow(scope: "m" | "s", cats: CategoryDef[], p: Prefixes): ActionRowBuilder<StringSelectMenuBuilder> {
   const menu = new StringSelectMenuBuilder()
     .setCustomId(`help_${scope}_select`)
-    .setPlaceholder("Select A Command Category!");
+    .setPlaceholder("Select a category !");
   for (const c of cats) {
     const count = c.buildCommands(p).length;
     menu.addOptions({
