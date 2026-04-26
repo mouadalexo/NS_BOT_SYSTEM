@@ -81,7 +81,7 @@ const MEMBER_CATEGORIES: CategoryDef[] = [
     label: "Music Commands",
     emoji: "\uD83C\uDFB5",
     buildCommands: () => [
-      { syntax: "=playlist <link>", desc: "Post a playlist embed (Playlist or DJ role required) — Deezer, Spotify, Apple Music, YouTube, SoundCloud, TIDAL, Amazon Music" },
+      { syntax: "=playlist <link>", desc: "Post playlist only" },
       { syntax: "=artists", desc: "List all artists tracked for auto new-release notifications" },
     ],
   },
@@ -143,7 +143,7 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     emoji: "\uD83C\uDFB5",
     buildCommands: () => [
       { syntax: "=album <link>", desc: "Post an album/single embed (DJ role required) — Deezer, Spotify, Apple Music, etc." },
-      { syntax: "=playlist <link>", desc: "Post a playlist embed (Playlist or DJ role required) — Deezer, Spotify, Apple Music, YouTube, SoundCloud, TIDAL, Amazon Music" },
+      { syntax: "=playlist <link>", desc: "Post playlist required member role" },
       { syntax: "=artists", desc: "List all artists tracked for auto new-release notifications" },
       { syntax: "=add <artist name>", desc: "Add an artist to auto new-release tracking (DJ role required)" },
     ],
