@@ -12,6 +12,7 @@ import {
 import sharp from "sharp";
 import { pool } from "@workspace/db";
 import { isMainGuild } from "../../utils/guildFilter.js";
+import { isChannelBlocked } from "../../panels/general.js";
 
 function toBold(text: string): string {
   const parts = text.split(/(<[^>]+>)/g);
@@ -553,6 +554,10 @@ async function buildPlaylistEmbeds(url: string, submitterName: string): Promise<
 }
 
 async function handlePostPlaylist(message: Message): Promise<void> {
+  if (await isChannelBlocked(message.guildId!, message.channelId)) {
+    await tempReply(message, "❌ Bot commands are disabled in this channel.");
+    return;
+  }
   if (!await hasPlaylistAccess(message)) {
     await tempReply(message, "❌ You need the **Playlist** (or DJ) role to use `=playlist`.");
     return;
@@ -574,21 +579,19 @@ async function handlePostPlaylist(message: Message): Promise<void> {
     return;
   }
 
+  // Resolve the configured playlist channel (single). If none is set, fall
+  // back to posting in the channel the command was used in.
   const playlistChannels = await getPlaylistChannelIds(message.guildId!);
-  // If admins set dedicated playlist rooms, only allow posting from those.
-  if (playlistChannels.length && !playlistChannels.includes(message.channelId)) {
-    await tempReply(
-      message,
-      `❌ \`=playlist\` only works in the configured playlist channel${playlistChannels.length > 1 ? "s" : ""}: ${playlistChannels.map((c) => `<#${c}>`).join(", ")}`
-    );
-    return;
-  }
+  const playlistChannelId = playlistChannels[0] ?? null;
+  const targetChannel = playlistChannelId
+    ? (await message.client.channels.fetch(playlistChannelId).catch(() => null)) as TextChannel | null ?? message.channel as TextChannel
+    : message.channel as TextChannel;
 
   await message.delete().catch(() => {});
 
   const submitter = message.member?.displayName ?? message.author.username;
   const payload   = await buildPlaylistEmbeds(url, submitter);
-  await (message.channel as TextChannel).send(payload);
+  await targetChannel.send(payload);
 }
 
 async function handleListArtists(message: Message): Promise<void> {
@@ -636,6 +639,10 @@ async function handleListArtists(message: Message): Promise<void> {
 }
 
 async function handlePost(message: Message): Promise<void> {
+  if (await isChannelBlocked(message.guildId!, message.channelId)) {
+    await tempReply(message, "❌ Bot commands are disabled in this channel.");
+    return;
+  }
   if (!await hasDjAccess(message)) {
     await tempReply(message, "❌ You need the **DJ** role to use `=album`.");
     return;
