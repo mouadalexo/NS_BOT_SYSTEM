@@ -216,8 +216,8 @@ export function buildAllCommandsEmbed(pvs = "=", mgr = "+", ctp = "-", ann = "!"
         name: "\u2699\uFE0F Slash Commands (Admin only)",
         value: [
           "`/setup pvs` \u2014 Configure the Private Voice System",
-          "`/ping-categories` \u2014 Configure Ping Categories (games with their own category)",
-          "`/ping-onetap` \u2014 Configure Ping One-Tap (temp voice game tagging)",
+          "`/tag-category` \u2014 Configure Tag Category (games with their own category)",
+          "`/tag-onetap` \u2014 Configure Tag One-Tap (temp voice game tagging)",
           "`/general setup` \u2014 Set staff role & blocked channels",
           "`/setup-jail` \u2014 Configure hammer, jail, member, and logs channel",
           "`/ann setup` \u2014 Configure announcements (roles, event colors)",
@@ -357,14 +357,14 @@ export async function registerPanelCommands(client: Client) {
     .toJSON();
 
   const ctpCategoryCommand = new SlashCommandBuilder()
-    .setName("ping-categories")
-    .setDescription("Configure Ping Categories \u2014 games with their own category")
+    .setName("tag-category")
+    .setDescription("Configure Tag Category \u2014 games with their own category")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .toJSON();
 
   const ctpOnetapCommand = new SlashCommandBuilder()
-    .setName("ping-onetap")
-    .setDescription("Configure Ping One-Tap \u2014 temp voice game tagging")
+    .setName("tag-onetap")
+    .setDescription("Configure Tag One-Tap \u2014 temp voice game tagging")
     .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
     .toJSON();
 
@@ -542,7 +542,7 @@ export async function registerPanelCommands(client: Client) {
 
     if (interaction.isChatInputCommand()) {
       const name = interaction.commandName;
-      if (name === "pvs" || name === "ping-categories" || name === "ping-onetap") {
+      if (name === "pvs" || name === "tag-category" || name === "tag-onetap") {
         await handleSetupCommand(interaction as ChatInputCommandInteraction);
       } else if (name === "jail") {
         await handleSetupRejectCommand(interaction as ChatInputCommandInteraction);
@@ -966,9 +966,9 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
   const name = interaction.commandName;
   if (name === "pvs") {
     await openPvsPanel(interaction as unknown as ButtonInteraction);
-  } else if (name === "ping-categories") {
+  } else if (name === "tag-category") {
     await openCtpManagePanel(interaction as unknown as ButtonInteraction);
-  } else if (name === "ping-onetap") {
+  } else if (name === "tag-onetap") {
     await openCtpTagPanel(interaction as unknown as ButtonInteraction);
   }
 }

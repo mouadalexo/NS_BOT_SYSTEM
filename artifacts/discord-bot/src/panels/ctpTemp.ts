@@ -134,7 +134,7 @@ function buildEmbed(cfg: Config, games: Games, _state: CtpTagState): EmbedBuilde
         inline: false,
       }
     )
-    .setFooter({ text: "Night Stars • Ping One-Tap" });
+    .setFooter({ text: "Night Stars • Tag One-Tap" });
 }
 
 function buildComponents(cfg: Config, games: Games, state: CtpTagState) {

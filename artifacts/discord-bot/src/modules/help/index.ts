@@ -96,8 +96,8 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     emoji: "\u2699\uFE0F",
     buildCommands: () => [
       { syntax: "/pvs", desc: "Configure the Private Voice System" },
-      { syntax: "/ping-categories", desc: "Configure Ping Categories — games with their own category" },
-      { syntax: "/ping-onetap", desc: "Configure Ping One-Tap — temp voice game tagging" },
+      { syntax: "/tag-category", desc: "Configure Tag Category — games with their own category" },
+      { syntax: "/tag-onetap", desc: "Configure Tag One-Tap — temp voice game tagging" },
       { syntax: "/jail", desc: "Configure the Jail system" },
       { syntax: "/ann", desc: "Configure Announcements" },
       { syntax: "/welcome", desc: "Configure the Welcome system" },

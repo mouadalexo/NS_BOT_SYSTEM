@@ -80,9 +80,9 @@ export async function openCtpManagePanel(interaction: ButtonInteraction) {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5000ff)
-          .setTitle("Ping Categories — Game Manager")
+          .setTitle("Tag Category — Game Manager")
           .setDescription("No games configured yet. Add your first game below.\n\nPick a **category** and a **role** — the game name is taken from the role automatically and the cooldown defaults to **10m**. You can edit name or cooldown later.")
-          .setFooter({ text: "Night Stars • Ping Categories" }),
+          .setFooter({ text: "Night Stars • Tag Category" }),
       ],
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -125,16 +125,16 @@ function buildManageEmbed(games: Awaited<ReturnType<typeof getGuildGames>>, sele
           `**Cooldown** — ${formatSeconds(selected.cooldownSeconds)}`,
         ].join("\n")
       )
-      .setFooter({ text: `${games.length} game(s) configured • Night Stars Ping Categories` });
+      .setFooter({ text: `${games.length} game(s) configured • Night Stars Tag Category` });
   }
 
   return new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("Ping Categories — Game Manager")
+    .setTitle("Tag Category — Game Manager")
     .setDescription(
       games.map((g) => `**${g.gameName}** — <@&${g.gameRoleId}> • Cooldown: ${formatSeconds(g.cooldownSeconds)}`).join("\n")
     )
-    .setFooter({ text: `${games.length} game(s) configured • Night Stars Ping Categories` });
+    .setFooter({ text: `${games.length} game(s) configured • Night Stars Tag Category` });
 }
 
 function buildManageComponents(games: Awaited<ReturnType<typeof getGuildGames>>, selectedCategoryId?: string) {
@@ -226,9 +226,9 @@ export async function handleCtpRemoveGame(interaction: ButtonInteraction) {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5000ff)
-          .setTitle("Ping Categories — Game Manager")
+          .setTitle("Tag Category — Game Manager")
           .setDescription("Game removed. No games configured yet. Add your first game below.")
-          .setFooter({ text: "Night Stars • Ping Categories" }),
+          .setFooter({ text: "Night Stars • Tag Category" }),
       ],
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -330,9 +330,9 @@ function buildAddPanelEmbed(state: CtpAddState) {
 
   return new EmbedBuilder()
     .setColor(0x5000ff)
-    .setTitle("Add a Game — Ping Category")
+    .setTitle("Add a Game — Tag Category")
     .setDescription(lines.join("\n"))
-    .setFooter({ text: "Night Stars • Ping Categories" });
+    .setFooter({ text: "Night Stars • Tag Category" });
 }
 
 function buildAddPanelComponents(state: CtpAddState) {
@@ -393,9 +393,9 @@ export async function handleCtpBackToManage(interaction: ButtonInteraction) {
       embeds: [
         new EmbedBuilder()
           .setColor(0x5000ff)
-          .setTitle("Ping Categories — Game Manager")
+          .setTitle("Tag Category — Game Manager")
           .setDescription("No games configured yet. Add your first game below.")
-          .setFooter({ text: "Night Stars • Ping Categories" }),
+          .setFooter({ text: "Night Stars • Tag Category" }),
       ],
       components: [
         new ActionRowBuilder<ButtonBuilder>().addComponents(
