@@ -15,6 +15,7 @@ import { openWelcomePanel } from "./welcome.js";
 import { openAnnPanel } from "./ann.js";
 import { openAutoModPanel } from "./automod.js";
 import { openServerLogsPanel } from "./server-logs.js";
+import { openJailPanel } from "./jail.js";
 import { buildAllCommandsEmbed, getGuildPrefixes } from "./index.js";
 
 const BRAND_COLOR = 0x5000ff;
@@ -154,19 +155,7 @@ export async function handleMasterSetupButton(interaction: ButtonInteraction): P
       );
       return;
     case "ms_jail":
-      await infoReply(
-        interaction,
-        "\uD83D\uDD12 Jail System",
-        [
-          "Configure with **`/setup-jail`** and provide:",
-          "\u2022 `role-hammer` (and optional `role-hammer-2..5`) \u2014 who can use jail commands",
-          "\u2022 `role-rejected` \u2014 the jail role to apply",
-          "\u2022 `role-member` \u2014 the member role to restore on unjail",
-          "\u2022 `logs-channel` \u2014 where jail events are logged",
-          "",
-          "**Commands:** `=jail @user reason` \u2022 `=unjail @user` \u2022 `=case @user`",
-        ].join("\n"),
-      );
+      await openJailPanel(interaction);
       return;
     case "ms_move":
       await infoReply(

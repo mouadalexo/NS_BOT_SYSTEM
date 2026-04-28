@@ -77,6 +77,17 @@ function extractReason(input: string) {
   return input.replace(/^<@!?\d+>\s*/, "").replace(/^\d+\s*/, "").trim();
 }
 
+function getJailRoleIds(config: Awaited<ReturnType<typeof getConfig>>) {
+  if (!config) return [];
+  if (config.jailRoleIdsJson) {
+    try {
+      const parsed = JSON.parse(config.jailRoleIdsJson);
+      if (Array.isArray(parsed) && parsed.length) return parsed.filter((x): x is string => typeof x === "string");
+    } catch {}
+  }
+  return config.jailRoleId ? [config.jailRoleId] : [];
+}
+
 function getHammerRoleIds(config: Awaited<ReturnType<typeof getConfig>>) {
   if (!config) return [];
   if (config.jailHammerRoleIdsJson) {
@@ -183,8 +194,9 @@ export function registerJailModule(client: Client) {
 
       const config = await getConfig(message.guild.id);
       const hammerRoleIds = getHammerRoleIds(config);
-      if (!config?.jailRoleId || !config?.memberRoleId || !hammerRoleIds.length) {
-        await sendTemporary(message, errorEmbed("The jail system is not configured yet. Use `/setup-jail` first."));
+      const jailRoleIds   = getJailRoleIds(config);
+      if (!jailRoleIds.length || !config?.memberRoleId || !hammerRoleIds.length) {
+        await sendTemporary(message, errorEmbed("The jail system is not configured yet. Open the **Jail** setup panel with `/jail` (or `=setup` → Jail)."));
         return;
       }
 
@@ -194,9 +206,9 @@ export function registerJailModule(client: Client) {
       }
 
       if (lower.startsWith("jail ")) {
-        await handleJail(message, member, content.slice(5).trim(), config.jailRoleId, config.jailLogsChannelId);
+        await handleJail(message, member, content.slice(5).trim(), jailRoleIds, config.jailLogsChannelId);
       } else {
-        await handleUnjail(message, member, content.slice(7).trim(), config.jailRoleId, config.memberRoleId, config.jailLogsChannelId);
+        await handleUnjail(message, member, content.slice(7).trim(), jailRoleIds, config.memberRoleId, config.jailLogsChannelId);
       }
     } catch (err) {
       console.error("[Jail] Unhandled error in messageCreate:", err);
@@ -209,9 +221,10 @@ async function handleJail(
   message: Message,
   moderator: GuildMember,
   args: string,
-  jailRoleId: string,
+  jailRoleIds: string[],
   logsChannelId?: string | null,
 ) {
+  const jailRoleId = jailRoleIds[0];
   const targetId = extractMentionedMemberId(args);
   const reason = extractReason(args);
 
@@ -236,7 +249,7 @@ async function handleJail(
     return;
   }
 
-  if (target.roles.cache.has(jailRoleId)) {
+  if (jailRoleIds.some((id) => target.roles.cache.has(id))) {
     await sendTemporary(message, errorEmbed(`**${displayName(target)}** is already jailed.`));
     return;
   }
@@ -251,18 +264,27 @@ async function handleJail(
     return;
   }
 
-  const jailRole = message.guild!.roles.cache.get(jailRoleId);
-  if (!jailRole) {
-    await sendTemporary(message, errorEmbed("The configured jail role no longer exists. Please run `/setup-jail` again."));
+  const jailRoles = jailRoleIds
+    .map((id) => message.guild!.roles.cache.get(id))
+    .filter((r): r is NonNullable<typeof r> => !!r);
+  if (jailRoles.length !== jailRoleIds.length) {
+    await sendTemporary(message, errorEmbed("One of the configured **Jailed Roles** no longer exists. Open `/jail` to fix the setup."));
+    return;
+  }
+  const unEditableJail = jailRoles.find((r) => !r.editable);
+  if (unEditableJail) {
+    await sendTemporary(message, errorEmbed(`I cannot manage <@&${unEditableJail.id}>. Move my bot role above all configured jail roles.`));
     return;
   }
 
-  if (!jailRole.editable) {
-    await sendTemporary(message, errorEmbed("I cannot manage the configured jail role. Move my bot role above the jail role."));
-    return;
-  }
-
-  const protectedRoles = findUnmanageableRoles(target, jailRoleId);
+  const jailRoleIdSet = new Set(jailRoleIds);
+  const protectedRoles = target.roles.cache.filter(
+    (role) =>
+      role.id !== target.guild.id &&
+      !jailRoleIdSet.has(role.id) &&
+      !role.managed &&
+      role.position >= target.guild.members.me!.roles.highest.position,
+  );
   if (protectedRoles.size) {
     await sendTemporary(
       message,
@@ -275,10 +297,10 @@ async function handleJail(
   }
 
   const removableRoles = target.roles.cache.filter(
-    (role) => role.id !== target.guild.id && role.id !== jailRoleId && !role.managed && role.editable,
+    (role) => role.id !== target.guild.id && !jailRoleIdSet.has(role.id) && !role.managed && role.editable,
   );
   if (removableRoles.size) await target.roles.remove(removableRoles, `Jailed by ${moderator.user.tag}: ${reason}`);
-  await target.roles.add(jailRoleId, `Jailed by ${moderator.user.tag}: ${reason}`);
+  await target.roles.add(jailRoleIds, `Jailed by ${moderator.user.tag}: ${reason}`);
 
   const [caseRecord] = await db
     .insert(jailCasesTable)
@@ -327,10 +349,11 @@ async function handleUnjail(
   message: Message,
   moderator: GuildMember,
   args: string,
-  jailRoleId: string,
+  jailRoleIds: string[],
   memberRoleId: string,
   logsChannelId?: string | null,
 ) {
+  const jailRoleId = jailRoleIds[0];
   const targetId = extractMentionedMemberId(args);
   if (!targetId) {
     await sendTemporary(message, errorEmbed("Usage: `=unjail @user`"));
@@ -343,7 +366,7 @@ async function handleUnjail(
     return;
   }
 
-  if (!target.roles.cache.has(jailRoleId)) {
+  if (!jailRoleIds.some((id) => target.roles.cache.has(id))) {
     await sendTemporary(message, errorEmbed(`**${displayName(target)}** is not jailed.`));
     return;
   }
@@ -358,19 +381,22 @@ async function handleUnjail(
     return;
   }
 
-  const jailRole = message.guild!.roles.cache.get(jailRoleId);
   const memberRole = message.guild!.roles.cache.get(memberRoleId);
-  if (!jailRole || !memberRole) {
-    await sendTemporary(message, errorEmbed("The configured jail/member role no longer exists. Please run `/setup-jail` again."));
+  const jailRolesPresent = jailRoleIds
+    .map((id) => message.guild!.roles.cache.get(id))
+    .filter((r): r is NonNullable<typeof r> => !!r);
+  if (!memberRole || !jailRolesPresent.length) {
+    await sendTemporary(message, errorEmbed("The configured jail/member role no longer exists. Open `/jail` to fix the setup."));
+    return;
+  }
+  const blocking = [...jailRolesPresent.filter((r) => !r.editable), ...(memberRole.editable ? [] : [memberRole])];
+  if (blocking.length) {
+    await sendTemporary(message, errorEmbed("I cannot manage one of the configured roles. Move my bot role above all jail roles and the member role."));
     return;
   }
 
-  if (!jailRole.editable || !memberRole.editable) {
-    await sendTemporary(message, errorEmbed("I cannot manage the configured jail/member role. Move my bot role above both roles."));
-    return;
-  }
-
-  await target.roles.remove(jailRoleId, `Unjailed by ${moderator.user.tag}`);
+  const toRemove = jailRoleIds.filter((id) => target.roles.cache.has(id));
+  if (toRemove.length) await target.roles.remove(toRemove, `Unjailed by ${moderator.user.tag}`);
   await target.roles.add(memberRoleId, `Unjailed by ${moderator.user.tag}`);
 
   // Send DM to unjailed member

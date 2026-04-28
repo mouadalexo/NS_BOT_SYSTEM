@@ -33,6 +33,13 @@ import {
   handlePvsPanelReset,
 } from "./pvs.js";
 import {
+  openJailPanel,
+  handleJailPanelRoleSelect,
+  handleJailPanelChannelSelect,
+  handleJailPanelSave,
+  handleJailPanelReset,
+} from "./jail.js";
+import {
   openCtpPanel,
   openCtpManagePanel,
   handleCtpPanelSelect,
@@ -370,37 +377,8 @@ export async function registerPanelCommands(client: Client) {
 
   const jailCommand = new SlashCommandBuilder()
     .setName("jail")
-    .setDescription("Configure the jail system")
-    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator)
-    .addRoleOption((option) =>
-      option.setName("role-hammer").setDescription("Role allowed to use =jail and =unjail").setRequired(true),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-rejected").setDescription("Role given to rejected members").setRequired(true),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-member").setDescription("Member role restored after unjail").setRequired(true),
-    )
-    .addChannelOption((option) =>
-      option
-        .setName("logs-channel")
-        .setDescription("Channel for jail logs")
-        .addChannelTypes(ChannelType.GuildText)
-        .setRequired(true),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-hammer-2").setDescription("Additional hammer role").setRequired(false),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-hammer-3").setDescription("Additional hammer role").setRequired(false),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-hammer-4").setDescription("Additional hammer role").setRequired(false),
-    )
-    .addRoleOption((option) =>
-      option.setName("role-hammer-5").setDescription("Additional hammer role").setRequired(false),
-    )
-    .toJSON();
+    .setDescription("Open the Jail setup panel (hammer / jailed / member roles + logs)")
+    .setDefaultMemberPermissions(PermissionsBitField.Flags.Administrator.toString());
 
   const annCommand = new SlashCommandBuilder()
     .setName("ann")
@@ -643,7 +621,7 @@ export async function registerPanelCommands(client: Client) {
         return;
       }
       const panelIds = [
-        "pp_save", "pp_reset",
+        "pp_save", "pp_reset", "jp_save", "jp_reset",
         "cp_add_new", "cp_edit_game", "cp_remove_game", "cp_back_manage",
         "cp_save", "cp_reset",
         "gp_save", "gp_reset", "gp_next", "gp_back",
@@ -976,59 +954,12 @@ async function handleSetupCommand(interaction: ChatInputCommandInteraction) {
 async function handleSetupRejectCommand(interaction: ChatInputCommandInteraction) {
   if (!interaction.memberPermissions?.has(PermissionsBitField.Flags.Administrator)) {
     await interaction.reply({
-      embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("\u274C You need **Administrator** permission to use this.")],
+      embeds: [new EmbedBuilder().setColor(0xff4d4d).setDescription("❌ You need **Administrator** permission to use this.")],
       ephemeral: true,
     });
     return;
   }
-
-  const hammerRole = interaction.options.getRole("role-hammer", true);
-  const hammerRoles = [
-    hammerRole,
-    interaction.options.getRole("role-hammer-2"),
-    interaction.options.getRole("role-hammer-3"),
-    interaction.options.getRole("role-hammer-4"),
-    interaction.options.getRole("role-hammer-5"),
-  ].filter((role): role is NonNullable<typeof hammerRole> => !!role);
-  const uniqueHammerRoleIds = [...new Set(hammerRoles.map((role) => role.id))];
-  const jailedRole = interaction.options.getRole("role-rejected", true);
-  const memberRole = interaction.options.getRole("role-member", true);
-  const logsChannel = interaction.options.getChannel("logs-channel", true);
-  const guildId = interaction.guildId!;
-
-  const existing = await db.select().from(botConfigTable).where(eq(botConfigTable.guildId, guildId)).limit(1);
-  const values = {
-    jailHammerRoleId: uniqueHammerRoleIds[0],
-    jailHammerRoleIdsJson: JSON.stringify(uniqueHammerRoleIds),
-    jailRoleId: jailedRole.id,
-    memberRoleId: memberRole.id,
-    jailLogsChannelId: logsChannel.id,
-    updatedAt: new Date(),
-  };
-
-  if (existing.length) {
-    await db.update(botConfigTable).set(values).where(eq(botConfigTable.guildId, guildId));
-  } else {
-    await db.insert(botConfigTable).values({ guildId, ...values });
-  }
-
-  await interaction.reply({
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0x00c851)
-        .setTitle("\u2705 Jail System Configured")
-        .setDescription(
-          `**Hammer Roles** — ${uniqueHammerRoleIds.map((id) => `<@&${id}>`).join(", ")}\n` +
-          `**Jail Role** — <@&${jailedRole.id}>\n` +
-          `**Member Role** — <@&${memberRole.id}>\n` +
-          `**Logs Channel** — <#${logsChannel.id}>\n\n` +
-          "Hammers can now use `=jail @user reason` and `=unjail @user`."
-        )
-        .setFooter({ text: "Night Stars \u2022 Jail System" })
-        .setTimestamp(),
-    ],
-    ephemeral: true,
-  });
+  await openJailPanel(interaction as unknown as ButtonInteraction);
 }
 
 async function handleAnnCommand(interaction: ChatInputCommandInteraction) {
@@ -1050,6 +981,10 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
       await handlePvsPanelSave(interaction);
     } else if (customId === "pp_reset") {
       await handlePvsPanelReset(interaction);
+    } else if (customId === "jp_save") {
+      await handleJailPanelSave(interaction);
+    } else if (customId === "jp_reset") {
+      await handleJailPanelReset(interaction);
     } else if (customId === "cp_add_new") {
       await openCtpPanel(interaction);
     } else if (customId === "cp_edit_game") {
@@ -1109,7 +1044,10 @@ async function handleButtonInteraction(interaction: ButtonInteraction) {
 async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteraction) {
   const { customId } = interaction;
   try {
-    if (customId.startsWith("pp_")) {
+    if (customId.startsWith("jp_")) {
+      await handleJailPanelRoleSelect(interaction);
+      return;
+    } else if (customId.startsWith("pp_")) {
       await handlePvsPanelSelect(interaction);
     } else if (customId.startsWith("cp_")) {
       await handleCtpPanelSelect(interaction);
@@ -1148,7 +1086,10 @@ async function handleRoleSelectInteraction(interaction: RoleSelectMenuInteractio
 async function handleChannelSelectInteraction(interaction: ChannelSelectMenuInteraction) {
   const { customId } = interaction;
   try {
-    if (customId.startsWith("pp_")) {
+    if (customId.startsWith("jp_")) {
+      await handleJailPanelChannelSelect(interaction);
+      return;
+    } else if (customId.startsWith("pp_")) {
       await handlePvsPanelSelect(interaction);
     } else if (customId.startsWith("cp_")) {
       await handleCtpPanelSelect(interaction);
