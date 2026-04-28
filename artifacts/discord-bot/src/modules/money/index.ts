@@ -31,6 +31,8 @@ export async function ensureMoneySchema(): Promise<void> {
       donation_logs_channel_id text
     );
     alter table money_config add column if not exists donation_logs_channel_id text;
+    alter table money_config add column if not exists button_mode text default 'dm';
+    alter table money_config add column if not exists button_link text;
 
     create table if not exists donation_tiers (
       id serial primary key,
@@ -80,6 +82,8 @@ export type DonationConfig = {
   cihRib: string | null;
   spanishIban: string | null;
   donationLogsChannelId: string | null;
+  buttonMode: "dm" | "link";
+  buttonLink: string | null;
 };
 
 type Lang = "en" | "ar" | "fr";
@@ -203,16 +207,18 @@ const LANG: Record<Lang, {
 // ─── DB helpers ───────────────────────────────────────────────────────────────
 export async function getDonationConfig(guildId: string): Promise<DonationConfig> {
   const r = await pool.query(
-    "SELECT paypal_link, cih_rib, spanish_iban, donation_logs_channel_id FROM money_config WHERE guild_id=$1",
+    "SELECT paypal_link, cih_rib, spanish_iban, donation_logs_channel_id, button_mode, button_link FROM money_config WHERE guild_id=$1",
     [guildId],
   );
-  if (!r.rowCount) return { paypalLink: null, cihRib: null, spanishIban: null, donationLogsChannelId: null };
+  if (!r.rowCount) return { paypalLink: null, cihRib: null, spanishIban: null, donationLogsChannelId: null, buttonMode: "dm", buttonLink: null };
   const row = r.rows[0];
   return {
     paypalLink: row.paypal_link,
     cihRib: row.cih_rib,
     spanishIban: row.spanish_iban,
     donationLogsChannelId: row.donation_logs_channel_id,
+    buttonMode: (row.button_mode === "link" ? "link" : "dm") as "dm" | "link",
+    buttonLink: row.button_link ?? null,
   };
 }
 
@@ -293,7 +299,16 @@ export function buildDonationPostEmbeds(rows: DonationEmbedRow[]): EmbedBuilder[
   });
 }
 
-export function buildDonateButtonRow(): ActionRowBuilder<ButtonBuilder> {
+export function buildDonateButtonRow(mode: "dm" | "link" = "dm", linkUrl?: string | null): ActionRowBuilder<ButtonBuilder> {
+  if (mode === "link" && linkUrl) {
+    return new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setLabel("Donate")
+        .setEmoji({ id: "1213138769348395058", name: "vip", animated: true })
+        .setStyle(ButtonStyle.Link)
+        .setURL(linkUrl),
+    );
+  }
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("dn_donate")
@@ -328,36 +343,10 @@ export async function renderDonationPost(
     }),
   );
 
-  const embeds = buildDonationPostEmbeds(resolvedRows);
-
-  const roleIds = new Set<string>();
-  const userIds = new Set<string>();
-  let hasEveryone = false;
-  let hasHere = false;
-
-  for (const r of resolvedRows) {
-    const text = r.description ?? "";
-    if (/@everyone\b/.test(text)) hasEveryone = true;
-    if (/@here\b/.test(text)) hasHere = true;
-    for (const m of text.matchAll(/<@&(\d{17,20})>/g)) roleIds.add(m[1]);
-    for (const m of text.matchAll(/<@!?(\d{17,20})>/g)) userIds.add(m[1]);
-  }
-
-  const pingParts: string[] = [];
-  if (hasEveryone) pingParts.push("@everyone");
-  if (hasHere) pingParts.push("@here");
-  for (const id of roleIds) pingParts.push(`<@&${id}>`);
-  for (const id of userIds) pingParts.push(`<@${id}>`);
-
-  const parse: ("everyone" | "roles" | "users")[] = [];
-  if (hasEveryone || hasHere) parse.push("everyone");
-  if (roleIds.size) parse.push("roles");
-  if (userIds.size) parse.push("users");
-
   return {
-    embeds,
-    content: pingParts.length ? `-# ${pingParts.join(" ")}` : "",
-    allowedMentions: { parse },
+    embeds: buildDonationPostEmbeds(resolvedRows),
+    content: "",
+    allowedMentions: { parse: [] },
   };
 }
 

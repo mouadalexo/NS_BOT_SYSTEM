@@ -23,6 +23,7 @@ import {
   saveWelcomeConfig,
   sendWelcomePreview,
 } from "../modules/welcome/index.js";
+import { findButton, findButtonRow, registerFindHandler } from "./findHelper.js";
 
 const TITLE_COLOR = 0x5000ff;
 
@@ -87,9 +88,20 @@ function rows(cfg: WelcomeConfig) {
     new ButtonBuilder().setCustomId("wc_test_server").setStyle(ButtonStyle.Primary).setLabel("Test Server"),
     new ButtonBuilder().setCustomId("wc_test_dm").setStyle(ButtonStyle.Primary).setLabel("Test DM"),
     new ButtonBuilder().setCustomId("wc_reset").setStyle(ButtonStyle.Danger).setLabel("Reset all"),
+    findButton("welcome", "channel", "text", "Find Channel"),
   );
   return [channelRow, variantRow, toggleRow, actionRow];
 }
+
+registerFindHandler("welcome", async (interaction, fieldKey, selectedId) => {
+  if (!interaction.guildId) return;
+  const cfg = await getWelcomeConfig(interaction.guildId);
+  if (fieldKey === "channel") {
+    cfg.channelId = selectedId;
+    await saveWelcomeConfig(interaction.guildId, cfg);
+  }
+  await interaction.update({ embeds: [summary(cfg)], components: rows(cfg) });
+});
 
 export async function openWelcomePanel(interaction: ChatInputCommandInteraction | ButtonInteraction) {
   if (!interaction.guildId) return;

@@ -58,10 +58,11 @@ const MEMBER_CATEGORIES: CategoryDef[] = [
     key: "ctp",
     label: "Call to Play Commands",
     emoji: "\uD83C\uDFAE",
-    buildCommands: () => [
-      { syntax: "tag [message]", desc: "Ping your game role — optionally add a message (e.g. tag lets play!)" },
-      { syntax: "tag <gamename> [message]", desc: "One-tap ping in a gaming chat or temp-voice category" },
-      { syntax: "tagcd", desc: "Show the remaining tag cooldown for your category / game" },
+    buildCommands: (p) => [
+      { syntax: "tag [message]", desc: "CTP Category — ping your game role from inside the game's voice or text channel (message optional, max 20 chars)" },
+      { syntax: "tag <gamename> [message]", desc: "CTP Onetap — ping a game role in a gaming chat or onetap voice (message optional, max 20 chars)" },
+      { syntax: `${p.pvs}tag list`, desc: "Show all available CTP Onetap games with their cooldown status" },
+      { syntax: "tagcd", desc: "Show the remaining tag cooldown for your current category or game" },
     ],
   },
   {
@@ -96,8 +97,8 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     emoji: "\u2699\uFE0F",
     buildCommands: () => [
       { syntax: "/pvs", desc: "Configure the Private Voice System" },
-      { syntax: "/tag-category", desc: "Configure Tag Category — games with their own category" },
-      { syntax: "/tag-onetap", desc: "Configure Tag One-Tap — temp voice game tagging" },
+      { syntax: "/tag-category", desc: "Configure CTP Category — games with their own voice category" },
+      { syntax: "/tag-onetap", desc: "Configure CTP Onetap — temp voice game tagging" },
       { syntax: "/jail", desc: "Configure the Jail system" },
       { syntax: "/ann", desc: "Configure Announcements" },
       { syntax: "/welcome", desc: "Configure the Welcome system" },
@@ -113,12 +114,13 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     key: "tag",
     label: "Tag Commands",
     emoji: "🎮",
-    buildCommands: () => [
-      { syntax: "/tag-category", desc: "Configure Tag Category — games with their own category" },
-      { syntax: "/tag-onetap", desc: "Configure Tag One-Tap — temp voice game tagging" },
-      { syntax: "tag [message]", desc: "Member: ping their game role from inside the game's voice category" },
-      { syntax: "tag <gamename> [message]", desc: "Member: one-tap ping in a gaming chat or temp-voice category" },
-      { syntax: "tagcd", desc: "Member: show the remaining tag cooldown for the current category / game" },
+    buildCommands: (p) => [
+      { syntax: "/tag-category", desc: "Configure CTP Category — games with their own voice category" },
+      { syntax: "/tag-onetap", desc: "Configure CTP Onetap — temp voice game tagging" },
+      { syntax: "tag [message]", desc: "Member: CTP Category ping from inside the game's voice or text channel (message optional, max 20 chars)" },
+      { syntax: "tag <gamename> [message]", desc: "Member: CTP Onetap ping in a gaming chat or onetap voice (message optional, max 20 chars)" },
+      { syntax: `${p.pvs}tag list`, desc: "Member: show all available CTP Onetap games with cooldown status" },
+      { syntax: "tagcd", desc: "Member: show the remaining tag cooldown for the current category or game" },
     ],
   },
   {
@@ -273,7 +275,6 @@ export async function sendStaffHelp(interaction: ChatInputCommandInteraction): P
 // ── INTERACTION ROUTERS ─────────────────────────────────────────────────────
 
 function deriveCloseId(scope: "m" | "s", interaction: ButtonInteraction | StringSelectMenuInteraction): string {
-  // Pull existing close id from the message components if present, else build a fresh one
   const rows = interaction.message?.components ?? [];
   for (const row of rows) {
     for (const comp of (row as any).components ?? []) {

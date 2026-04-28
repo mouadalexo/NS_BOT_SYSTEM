@@ -68,6 +68,9 @@ async function buildOverviewEmbed(guildId: string): Promise<EmbedBuilder> {
   paymentLines.push(`PayPal: ${cfg.paypalLink ? "✅" : "❌"}`);
   paymentLines.push(`CIH RIB: ${cfg.cihRib ? "✅" : "❌"}`);
   paymentLines.push(`Spanish IBAN: ${cfg.spanishIban ? "✅" : "❌"}`);
+  const btnModeLabel = cfg.buttonMode === "link"
+    ? `Link — ${cfg.buttonLink ?? "*(no URL set)*"}`
+    : "DM flow (default)";
 
   const tierLines = tiers.length
     ? tiers.map((t, i) => `${i + 1}. ${fmtTier(t)}`).join("\n")
@@ -93,6 +96,7 @@ async function buildOverviewEmbed(guildId: string): Promise<EmbedBuilder> {
     )
     .addFields(
       { name: "💳 Payment Methods",      value: paymentLines.join("\n"), inline: true },
+      { name: "🔘 Donate Button Mode",    value: btnModeLabel, inline: true },
       { name: "📒 Donation Logs",       value: cfg.donationLogsChannelId ? `<#${cfg.donationLogsChannelId}>` : "❌ not set", inline: true },
       { name: "📢 Published Embed",     value: published ? `<#${published.channelId}> · [jump](https://discord.com/channels/${guildId}/${published.channelId}/${published.messageId})` : "❌ not yet published", inline: true },
       { name: "🎁 Tiers",                value: tierLines.slice(0, 1024) },
@@ -106,6 +110,7 @@ function buildPanelRows(): ActionRowBuilder<ButtonBuilder>[] {
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("mp_set_payment").setLabel("Set Payment Info").setEmoji("💳").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId("mp_set_logs").setLabel("Set Donation Logs").setEmoji("📒").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId("mp_button_mode").setLabel("Button Mode").setEmoji("🔘").setStyle(ButtonStyle.Primary),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId("mp_add_tier").setLabel("Add Tier").setEmoji("➕").setStyle(ButtonStyle.Secondary),
@@ -610,10 +615,11 @@ export async function handleMoneyConfirmPublish(interaction: ButtonInteraction):
   }
   const rows = await getDonationEmbeds(interaction.guild!.id);
   const rendered = await renderDonationPost(rows, interaction.guild!);
+  const cfg2 = await getDonationConfig(interaction.guild!.id);
   const sent = await channel.send({
     content: rendered.content || undefined,
     embeds: rendered.embeds,
-    components: [buildDonateButtonRow()],
+    components: [buildDonateButtonRow(cfg2.buttonMode, cfg2.buttonLink)],
     allowedMentions: rendered.allowedMentions,
   });
   await setPublishedDonationMessage(interaction.guild!.id, channel.id, sent.id);
@@ -641,23 +647,101 @@ export async function handleMoneyEditPosted(interaction: ButtonInteraction): Pro
   const rows = await getDonationEmbeds(interaction.guild!.id);
   const rendered = await renderDonationPost(rows, interaction.guild!);
   if (!msg) {
+    const cfg3 = await getDonationConfig(interaction.guild!.id);
     const sent = await channel.send({
       content: rendered.content || undefined,
       embeds: rendered.embeds,
-      components: [buildDonateButtonRow()],
+      components: [buildDonateButtonRow(cfg3.buttonMode, cfg3.buttonLink)],
       allowedMentions: rendered.allowedMentions,
     });
     await setPublishedDonationMessage(interaction.guild!.id, channel.id, sent.id);
     await interaction.reply({ content: `♻️ Original message was deleted — re-posted in <#${channel.id}>.`, ephemeral: true });
     return;
   }
+  const cfg4 = await getDonationConfig(interaction.guild!.id);
   await msg.edit({
     content: rendered.content || null,
     embeds: rendered.embeds,
-    components: [buildDonateButtonRow()],
+    components: [buildDonateButtonRow(cfg4.buttonMode, cfg4.buttonLink)],
     allowedMentions: rendered.allowedMentions,
   });
   await interaction.reply({ content: `🔁 Updated the posted message in <#${channel.id}>.`, ephemeral: true });
+}
+
+
+// ─── Button Mode ──────────────────────────────────────────────────────────────
+export async function handleMoneyButtonMode(interaction: ButtonInteraction): Promise<void> {
+  const cfg = await getDonationConfig(interaction.guild!.id);
+  const current = cfg.buttonMode === "link"
+    ? `Currently: Link → \`${cfg.buttonLink ?? "no URL set"}\``
+    : "Currently: DM flow";
+  await interaction.update({
+    embeds: [
+      new EmbedBuilder()
+        .setColor(0x5000ff)
+        .setTitle("🔘 Donate Button Mode")
+        .setDescription(
+          `Choose how the **Donate** button behaves when a member clicks it.
+
+${current}`,
+        )
+        .setFooter({ text: "Night Stars • /donate" }),
+    ],
+    components: [
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("mp_bmode_dm").setLabel("DM flow").setEmoji("📩").setStyle(ButtonStyle.Primary),
+        new ButtonBuilder().setCustomId("mp_bmode_link").setLabel("Open Link").setEmoji("🔗").setStyle(ButtonStyle.Primary),
+      ),
+      new ActionRowBuilder<ButtonBuilder>().addComponents(
+        new ButtonBuilder().setCustomId("mp_back_to_panel").setLabel("Cancel").setStyle(ButtonStyle.Secondary),
+      ),
+    ],
+  });
+}
+
+export async function handleMoneyBmodeDm(interaction: ButtonInteraction): Promise<void> {
+  await pool.query(
+    `INSERT INTO money_config (guild_id, button_mode)
+     VALUES ($1, 'dm')
+     ON CONFLICT (guild_id) DO UPDATE SET button_mode = 'dm'`,
+    [interaction.guild!.id],
+  );
+  await interaction.deferUpdate();
+  await refreshPanel(interaction);
+}
+
+export async function handleMoneyBmodeLink(interaction: ButtonInteraction): Promise<void> {
+  const cfg = await getDonationConfig(interaction.guild!.id);
+  const modal = new ModalBuilder().setCustomId("mp_bmode_link_modal").setTitle("Open Link — Set URL");
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("url")
+        .setLabel("Link URL")
+        .setPlaceholder("https://buymeacoffee.com/fornightstars")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(500)
+        .setValue(cfg.buttonLink ?? ""),
+    ),
+  );
+  await interaction.showModal(modal);
+}
+
+export async function handleMoneyBmodeLinkModal(interaction: ModalSubmitInteraction): Promise<void> {
+  const url = interaction.fields.getTextInputValue("url").trim();
+  if (!url.startsWith("http://") && !url.startsWith("https://")) {
+    await interaction.reply({ content: "❌ URL must start with `https://`.", ephemeral: true });
+    return;
+  }
+  await pool.query(
+    `INSERT INTO money_config (guild_id, button_mode, button_link)
+     VALUES ($1, 'link', $2)
+     ON CONFLICT (guild_id) DO UPDATE SET button_mode = 'link', button_link = $2`,
+    [interaction.guild!.id, url],
+  );
+  await interaction.deferUpdate();
+  await refreshPanel(interaction);
 }
 
 // ─── Back-to-panel helper ─────────────────────────────────────────────────────

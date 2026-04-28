@@ -10,6 +10,7 @@ import {
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { findButton, findButtonRow, registerFindHandler } from "./findHelper.js";
 
 interface StaffPanelState {
   coreRoleId?: string;
@@ -40,6 +41,8 @@ function buildStaffPanelComponents(state: StaffPanelState) {
       .setMaxValues(1)
   );
 
+  const findRow = findButtonRow(findButton("staff", "core", "role", "Find Core Role"));
+
   const row2 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("sp_save")
@@ -52,8 +55,19 @@ function buildStaffPanelComponents(state: StaffPanelState) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  return [row1, row2];
+  return [row1, findRow, row2];
 }
+
+registerFindHandler("staff", async (interaction, fieldKey, selectedId) => {
+  const userId = interaction.user.id;
+  const state = staffPanelState.get(userId) ?? {};
+  if (fieldKey === "core") state.coreRoleId = selectedId;
+  staffPanelState.set(userId, state);
+  await interaction.update({
+    embeds: [buildStaffPanelEmbed(state)],
+    components: buildStaffPanelComponents(state),
+  });
+});
 
 export async function openStaffPanel(interaction: ButtonInteraction) {
   const userId = interaction.user.id;

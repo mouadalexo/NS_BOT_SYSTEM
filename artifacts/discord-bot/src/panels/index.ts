@@ -162,6 +162,10 @@ import {
   handleMoneyEditPosted,
   handleMoneyBackToPanel,
   handleMoneyBack,
+  handleMoneyButtonMode,
+  handleMoneyBmodeDm,
+  handleMoneyBmodeLink,
+  handleMoneyBmodeLinkModal,
 } from "./money.js";
 import {
   openFeedbackPanel,
@@ -737,6 +741,9 @@ export async function registerPanelCommands(client: Client) {
           else if (cid === "mp_edit_posted")     await handleMoneyEditPosted(interaction as ButtonInteraction);
           else if (cid === "mp_back_to_panel")   await handleMoneyBackToPanel(interaction as ButtonInteraction);
           else if (cid === "mp_back")            await handleMoneyBack(interaction as ButtonInteraction);
+          else if (cid === "mp_button_mode")     await handleMoneyButtonMode(interaction as ButtonInteraction);
+          else if (cid === "mp_bmode_dm")         await handleMoneyBmodeDm(interaction as ButtonInteraction);
+          else if (cid === "mp_bmode_link")        await handleMoneyBmodeLink(interaction as ButtonInteraction);
         } catch (err) { console.error("Donate panel button error:", err); }
         return;
       }
@@ -906,6 +913,8 @@ export async function registerPanelCommands(client: Client) {
         try { await handleMusicAddModalSubmit(interaction as ModalSubmitInteraction); } catch (err) { console.error("Music add modal error:", err); }
       } else if (customId === "mp_payment_modal") {
         try { await handleMoneyPaymentModal(interaction as ModalSubmitInteraction); } catch (err) { console.error("Donate payment modal error:", err); }
+      } else if (customId === "mp_bmode_link_modal") {
+        try { await handleMoneyBmodeLinkModal(interaction as ModalSubmitInteraction); } catch (err) { console.error("Donate bmode modal error:", err); }
       } else if (customId === "mp_add_tier_modal") {
         try { await handleMoneyAddTierModal(interaction as ModalSubmitInteraction); } catch (err) { console.error("Donate add tier modal error:", err); }
       } else if (customId.startsWith("mp_edit_tier_modal:")) {

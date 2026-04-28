@@ -13,6 +13,7 @@ import {
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
+import { findButton, findButtonRow, registerFindHandler } from "./findHelper.js";
 
 interface PvsPanelState {
   pvsCategoryId?: string;
@@ -63,6 +64,12 @@ function buildPvsPanelComponents(state: PvsPanelState) {
       .setMaxValues(1)
   );
 
+  const findRow = findButtonRow(
+    findButton("pvs", "category", "category", "Find Category"),
+    findButton("pvs", "role", "role", "Find Role"),
+    findButton("pvs", "waiting", "voice", "Find Waiting Room"),
+  );
+
   const row4 = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
       .setCustomId("pp_save")
@@ -74,8 +81,21 @@ function buildPvsPanelComponents(state: PvsPanelState) {
       .setStyle(ButtonStyle.Danger)
   );
 
-  return [row1, row2, row3, row4];
+  return [row1, row2, row3, findRow, row4];
 }
+
+registerFindHandler("pvs", async (interaction, fieldKey, selectedId) => {
+  const userId = interaction.user.id;
+  const state = pvsPanelState.get(userId) ?? {};
+  if (fieldKey === "category") state.pvsCategoryId = selectedId;
+  else if (fieldKey === "role") state.pvsManagerRoleId = selectedId;
+  else if (fieldKey === "waiting") state.pvsWaitingRoomChannelId = selectedId;
+  pvsPanelState.set(userId, state);
+  await interaction.update({
+    embeds: [buildPvsPanelEmbed(state)],
+    components: buildPvsPanelComponents(state),
+  });
+});
 
 export async function openPvsPanel(interaction: ButtonInteraction) {
   const userId = interaction.user.id;

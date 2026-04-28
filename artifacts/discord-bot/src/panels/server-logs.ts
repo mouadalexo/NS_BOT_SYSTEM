@@ -21,6 +21,7 @@ import {
   setEventEnabled,
   setLogCategory,
 } from "../modules/server-logs/index.js";
+import { findButton, findButtonRow, registerFindHandler } from "./findHelper.js";
 
 const COLOR = 0x5000ff;
 
@@ -91,13 +92,28 @@ async function buildLogsRows(guildId: string) {
     new ActionRowBuilder<ButtonBuilder>().addComponents(...group),
   );
 
+  const findRow = findButtonRow(findButton("server-logs", "category", "category", "Find Log Category"));
+
   const navRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("sl_refresh").setLabel("Refresh").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId("sl_back_master").setLabel("← Back").setStyle(ButtonStyle.Secondary),
   );
 
-  return [categoryRow, ...buttonRows, navRow];
+  // Discord allows max 5 action rows. Drop event-button rows beyond what fits.
+  const allRows = [categoryRow, findRow, ...buttonRows, navRow];
+  return allRows.slice(0, 5);
 }
+
+registerFindHandler("server-logs", async (interaction, fieldKey, selectedId) => {
+  const guildId = interaction.guild!.id;
+  if (fieldKey === "category") {
+    await setLogCategory(guildId, selectedId);
+    invalidateServerLogsCache(guildId);
+  }
+  const embed = await buildLogsEmbed(guildId);
+  const components = await buildLogsRows(guildId);
+  await interaction.update({ embeds: [embed], components });
+});
 
 // ---------------------------------------------------------------------------
 // Public open

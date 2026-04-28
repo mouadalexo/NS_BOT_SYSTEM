@@ -10,6 +10,7 @@ import {
   RoleSelectMenuInteraction,
 } from "discord.js";
 import { pool } from "@workspace/db";
+import { findButton, findButtonRow, registerFindHandler } from "./findHelper.js";
 
 const TITLE_COLOR = 0x5000ff;
 
@@ -74,14 +75,38 @@ function buildComponents(state: ClearPanelState) {
       .setDefaultRoles(state.roles.slice(0, 10)),
   );
 
+  const findRow = findButtonRow(findButton("clear", "addRole", "role", "Find & Add Role"));
+
   const actionRow = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder().setCustomId("cl_save").setLabel("Save").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId("cl_preview").setLabel("Preview Config").setStyle(ButtonStyle.Primary),
     new ButtonBuilder().setCustomId("cl_reset").setLabel("Reset").setStyle(ButtonStyle.Danger),
   );
 
-  return [rolesRow, actionRow];
+  return [rolesRow, findRow, actionRow];
 }
+
+registerFindHandler("clear", async (interaction, fieldKey, selectedId) => {
+  const state = getOrInitState(interaction.user.id);
+  if (fieldKey === "addRole") {
+    if (!state.roles.includes(selectedId)) {
+      if (state.roles.length >= 10) {
+        await interaction.update({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0xff5050)
+              .setTitle("Limit reached")
+              .setDescription("You already have 10 roles selected. Remove one in the picker above before adding more."),
+          ],
+          components: [],
+        });
+        return;
+      }
+      state.roles.push(selectedId);
+    }
+  }
+  await interaction.update(render(state));
+});
 
 function render(state: ClearPanelState) {
   return { embeds: [buildEmbed(state)], components: buildComponents(state) };
