@@ -100,14 +100,15 @@ export function registerCTPModule(client: Client) {
         }
 
         const voiceChannel = member.voice.channel;
-        if (!voiceChannel || !voiceChannel.parentId) {
+        const msgParentId = (message.channel as TextChannel).parentId ?? null;
+        const parentId = msgParentId ?? voiceChannel?.parentId ?? null;
+        if (!parentId) {
           const notice = await message.channel.send({
-            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Join a game voice channel (or use a gaming chat) to check the tag cooldown.")],
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Use this in a game category channel (text or voice) or join a game voice to check the tag cooldown.")],
           });
           setTimeout(() => notice.delete().catch(() => {}), 6000);
           return;
         }
-        const parentId = voiceChannel.parentId;
 
         // Try CTP category first
         const [ctpCfg] = await db
@@ -200,18 +201,11 @@ export function registerCTPModule(client: Client) {
       // ── -tag in CTP game category ─────────────────────────────────────────
       if (isCTPTag) {
         const voiceChannel = member.voice.channel;
-        if (!voiceChannel) {
-          const notice = await message.channel.send({
-            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("You must be in a game voice channel to use this.")],
-          });
-          setTimeout(() => notice.delete().catch(() => {}), 6000);
-          return;
-        }
-
-        const categoryId = voiceChannel.parentId;
+        const msgParentId = (message.channel as TextChannel).parentId ?? null;
+        const categoryId = msgParentId ?? voiceChannel?.parentId ?? null;
         if (!categoryId) {
           const notice = await message.channel.send({
-            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("This voice channel is not under a configured game category.")],
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("Use `tag` in a channel under a game category (or join its voice channel).")],
           });
           setTimeout(() => notice.delete().catch(() => {}), 6000);
           return;
@@ -226,7 +220,7 @@ export function registerCTPModule(client: Client) {
 
         if (!config) {
           const notice = await message.channel.send({
-            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("This voice channel's category is not set up for Call to Play.")],
+            embeds: [new EmbedBuilder().setColor(0x5000ff).setDescription("This category isn't set up for Call to Play.")],
           });
           setTimeout(() => notice.delete().catch(() => {}), 6000);
           return;
@@ -263,7 +257,7 @@ export function registerCTPModule(client: Client) {
         const ctpContent = ctpInlineMsg
           ? `**${member.displayName}** — ${ctpInlineMsg} <@&${config.gameRoleId}>`
           : `**${member.displayName}** <@&${config.gameRoleId}>`;
-        await voiceChannel.send({
+        await (message.channel as TextChannel).send({
           content: ctpContent,
           allowedMentions: { roles: [config.gameRoleId] },
         });
