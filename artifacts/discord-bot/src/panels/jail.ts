@@ -14,10 +14,9 @@ import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
-// ── Per-user editing state ───────────────────────────────────────────────────
 interface JailPanelState {
   hammerRoleIds: string[];
-  jailRoleIds: string[];
+  jailRoleId?: string;
   memberRoleId?: string;
   logsChannelId?: string;
 }
@@ -27,69 +26,52 @@ export const jailPanelState = new Map<string, JailPanelState>();
 const BRAND = 0x5000ff;
 
 function fmtRoles(ids: string[]): string {
-  if (!ids.length) return "_not set_";
+  if (!ids.length) return "`—`";
   return ids.map((id) => `<@&${id}>`).join(" ");
 }
 function fmtRole(id?: string): string {
-  return id ? `<@&${id}>` : "_not set_";
+  return id ? `<@&${id}>` : "`—`";
 }
 function fmtChan(id?: string): string {
-  return id ? `<#${id}>` : "_not set_";
+  return id ? `<#${id}>` : "`—`";
 }
 
 function buildJailPanelEmbed(state: JailPanelState): EmbedBuilder {
   return new EmbedBuilder()
     .setColor(BRAND)
-    .setTitle("🔒 Jail System — Setup")
+    .setTitle("🔒 Jail — Setup")
     .setDescription(
       [
-        "Pick or change any item below — your choices update live. Click **Save** when you're done.",
-        "",
-        `**Hammer Roles** — ${fmtRoles(state.hammerRoleIds)}`,
-        "_Members with any of these roles can use_ `=jail` _and_ `=unjail`_._",
-        "",
-        `**Jailed Roles** — ${fmtRoles(state.jailRoleIds)}`,
-        "_Roles applied to a member when they get jailed (all of them are added)._",
-        "",
-        `**Member Role** — ${fmtRole(state.memberRoleId)}`,
-        "_The role restored when a member is unjailed._",
-        "",
-        `**Jail Logs** — ${fmtChan(state.logsChannelId)}`,
-        "_Channel where jail / unjail events are posted._",
+        `**Hammers** ${fmtRoles(state.hammerRoleIds)}`,
+        `**Jail Role** ${fmtRole(state.jailRoleId)}`,
+        `**Member Role** ${fmtRole(state.memberRoleId)}`,
+        `**Logs** ${fmtChan(state.logsChannelId)}`,
       ].join("\n"),
     )
-    .setFooter({ text: "Night Stars • Jail" });
+    .setFooter({ text: "Hammers add up • Reset clears all" });
 }
 
 function buildJailPanelComponents(state: JailPanelState) {
   const row1 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("jp_hammer_roles")
-      .setPlaceholder(
-        state.hammerRoleIds.length
-          ? `Hammer Roles (${state.hammerRoleIds.length} selected) — pick again to replace`
-          : "Pick Hammer Roles (one or many)…",
-      )
+      .setPlaceholder("Hammer roles")
       .setMinValues(0)
       .setMaxValues(10),
   );
 
   const row2 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
-      .setCustomId("jp_jail_roles")
-      .setPlaceholder(
-        state.jailRoleIds.length
-          ? `Jailed Roles (${state.jailRoleIds.length} selected) — pick again to replace`
-          : "Pick Jailed Roles (one or many)…",
-      )
+      .setCustomId("jp_jail_role")
+      .setPlaceholder("Jail role")
       .setMinValues(0)
-      .setMaxValues(10),
+      .setMaxValues(1),
   );
 
   const row3 = new ActionRowBuilder<RoleSelectMenuBuilder>().addComponents(
     new RoleSelectMenuBuilder()
       .setCustomId("jp_member_role")
-      .setPlaceholder(state.memberRoleId ? "Member Role (set) — pick to change" : "Pick the Member Role…")
+      .setPlaceholder("Member role")
       .setMinValues(0)
       .setMaxValues(1),
   );
@@ -97,7 +79,7 @@ function buildJailPanelComponents(state: JailPanelState) {
   const row4 = new ActionRowBuilder<ChannelSelectMenuBuilder>().addComponents(
     new ChannelSelectMenuBuilder()
       .setCustomId("jp_logs_channel")
-      .setPlaceholder(state.logsChannelId ? "Jail Logs Channel (set) — pick to change" : "Pick the Jail Logs channel…")
+      .setPlaceholder("Logs channel")
       .addChannelTypes(ChannelType.GuildText)
       .setMinValues(0)
       .setMaxValues(1),
@@ -130,15 +112,20 @@ export async function openJailPanel(interaction: ButtonInteraction): Promise<voi
     .where(eq(botConfigTable.guildId, guildId))
     .limit(1);
 
-  const hammerRoleIds = parseJailRoleIdsJson(cfg?.jailHammerRoleIdsJson)
-    .concat(cfg?.jailHammerRoleId && !parseJailRoleIdsJson(cfg.jailHammerRoleIdsJson).length ? [cfg.jailHammerRoleId] : []);
-  const jailRoleIds = parseJailRoleIdsJson(cfg?.jailRoleIdsJson)
-    .concat(cfg?.jailRoleId && !parseJailRoleIdsJson(cfg.jailRoleIdsJson).length ? [cfg.jailRoleId] : []);
+  const hammerJson = parseJailRoleIdsJson(cfg?.jailHammerRoleIdsJson);
+  const hammerRoleIds = hammerJson.length
+    ? hammerJson
+    : cfg?.jailHammerRoleId
+      ? [cfg.jailHammerRoleId]
+      : [];
+
+  const jailJson = parseJailRoleIdsJson(cfg?.jailRoleIdsJson);
+  const jailRoleId = jailJson[0] ?? cfg?.jailRoleId ?? undefined;
 
   const state: JailPanelState = {
     hammerRoleIds: [...new Set(hammerRoleIds)],
-    jailRoleIds:   [...new Set(jailRoleIds)],
-    memberRoleId:  cfg?.memberRoleId ?? undefined,
+    jailRoleId,
+    memberRoleId: cfg?.memberRoleId ?? undefined,
     logsChannelId: cfg?.jailLogsChannelId ?? undefined,
   };
   jailPanelState.set(userId, state);
@@ -157,12 +144,12 @@ export async function openJailPanel(interaction: ButtonInteraction): Promise<voi
 
 export async function handleJailPanelRoleSelect(interaction: RoleSelectMenuInteraction): Promise<void> {
   const userId = interaction.user.id;
-  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [], jailRoleIds: [] };
+  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [] };
 
   if (interaction.customId === "jp_hammer_roles") {
-    state.hammerRoleIds = [...interaction.values];
-  } else if (interaction.customId === "jp_jail_roles") {
-    state.jailRoleIds = [...interaction.values];
+    state.hammerRoleIds = [...new Set([...state.hammerRoleIds, ...interaction.values])];
+  } else if (interaction.customId === "jp_jail_role") {
+    state.jailRoleId = interaction.values[0] ?? undefined;
   } else if (interaction.customId === "jp_member_role") {
     state.memberRoleId = interaction.values[0] ?? undefined;
   }
@@ -176,7 +163,7 @@ export async function handleJailPanelRoleSelect(interaction: RoleSelectMenuInter
 
 export async function handleJailPanelChannelSelect(interaction: ChannelSelectMenuInteraction): Promise<void> {
   const userId = interaction.user.id;
-  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [], jailRoleIds: [] };
+  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [] };
 
   if (interaction.customId === "jp_logs_channel") {
     state.logsChannelId = interaction.values[0] ?? undefined;
@@ -191,18 +178,18 @@ export async function handleJailPanelChannelSelect(interaction: ChannelSelectMen
 
 export async function handleJailPanelSave(interaction: ButtonInteraction): Promise<void> {
   const userId = interaction.user.id;
-  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [], jailRoleIds: [] };
+  const state = jailPanelState.get(userId) ?? { hammerRoleIds: [] };
   const guildId = interaction.guild!.id;
 
-  if (!state.hammerRoleIds.length || !state.jailRoleIds.length || !state.memberRoleId) {
+  if (!state.hammerRoleIds.length || !state.jailRoleId || !state.memberRoleId) {
     await interaction.reply({
       embeds: [
         new EmbedBuilder()
           .setColor(0xff4d4d)
           .setDescription(
-            "❌ You still need to set:\n" +
-            (state.hammerRoleIds.length ? "" : "• at least one **Hammer Role**\n") +
-            (state.jailRoleIds.length ? "" : "• at least one **Jailed Role**\n") +
+            "❌ Still missing:\n" +
+            (state.hammerRoleIds.length ? "" : "• at least one **Hammer**\n") +
+            (state.jailRoleId ? "" : "• the **Jail Role**\n") +
             (state.memberRoleId ? "" : "• the **Member Role**"),
           ),
       ],
@@ -214,8 +201,8 @@ export async function handleJailPanelSave(interaction: ButtonInteraction): Promi
   const values = {
     jailHammerRoleId: state.hammerRoleIds[0],
     jailHammerRoleIdsJson: JSON.stringify(state.hammerRoleIds),
-    jailRoleId: state.jailRoleIds[0],
-    jailRoleIdsJson: JSON.stringify(state.jailRoleIds),
+    jailRoleId: state.jailRoleId,
+    jailRoleIdsJson: JSON.stringify([state.jailRoleId]),
     memberRoleId: state.memberRoleId,
     jailLogsChannelId: state.logsChannelId ?? null,
     updatedAt: new Date(),
@@ -239,15 +226,13 @@ export async function handleJailPanelSave(interaction: ButtonInteraction): Promi
     embeds: [
       new EmbedBuilder()
         .setColor(0x00c851)
-        .setTitle("✅ Jail System Saved")
+        .setTitle("✅ Jail Saved")
         .setDescription(
           [
-            `**Hammer Roles** — ${fmtRoles(state.hammerRoleIds)}`,
-            `**Jailed Roles** — ${fmtRoles(state.jailRoleIds)}`,
-            `**Member Role** — ${fmtRole(state.memberRoleId)}`,
-            `**Jail Logs** — ${fmtChan(state.logsChannelId)}`,
-            "",
-            "Hammers can now use `=jail @user reason` and `=unjail @user`.",
+            `**Hammers** ${fmtRoles(state.hammerRoleIds)}`,
+            `**Jail Role** ${fmtRole(state.jailRoleId)}`,
+            `**Member Role** ${fmtRole(state.memberRoleId)}`,
+            `**Logs** ${fmtChan(state.logsChannelId)}`,
           ].join("\n"),
         )
         .setFooter({ text: "Night Stars • Jail" }),
@@ -257,7 +242,7 @@ export async function handleJailPanelSave(interaction: ButtonInteraction): Promi
 }
 
 export async function handleJailPanelReset(interaction: ButtonInteraction): Promise<void> {
-  const state: JailPanelState = { hammerRoleIds: [], jailRoleIds: [] };
+  const state: JailPanelState = { hammerRoleIds: [] };
   jailPanelState.set(interaction.user.id, state);
   await interaction.update({
     embeds: [buildJailPanelEmbed(state)],
