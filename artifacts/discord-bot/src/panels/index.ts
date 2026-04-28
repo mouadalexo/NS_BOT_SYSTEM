@@ -711,8 +711,8 @@ export async function registerPanelCommands(client: Client) {
             }
             try {
               await voiceChannel.send({
-                content: `Here is your ${kind} link — enjoy!`,
-                allowedMentions: { parse: [] },
+                content: `<@${btn.user.id}> here is your ${kind} link — enjoy!`,
+                allowedMentions: { users: [btn.user.id] },
               });
               await voiceChannel.send({
                 content: url,

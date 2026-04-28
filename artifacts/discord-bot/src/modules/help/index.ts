@@ -110,6 +110,18 @@ const STAFF_CATEGORIES: CategoryDef[] = [
     ],
   },
   {
+    key: "tag",
+    label: "Tag Commands",
+    emoji: "🎮",
+    buildCommands: () => [
+      { syntax: "/tag-category", desc: "Configure Tag Category — games with their own category" },
+      { syntax: "/tag-onetap", desc: "Configure Tag One-Tap — temp voice game tagging" },
+      { syntax: "tag [message]", desc: "Member: ping their game role from inside the game's voice category" },
+      { syntax: "tag <gamename> [message]", desc: "Member: one-tap ping in a gaming chat or temp-voice category" },
+      { syntax: "tagcd", desc: "Member: show the remaining tag cooldown for the current category / game" },
+    ],
+  },
+  {
     key: "jail",
     label: "Jail Commands",
     emoji: "\uD83D\uDD28",

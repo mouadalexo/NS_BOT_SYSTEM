@@ -6,7 +6,10 @@ import {
   ButtonBuilder,
   ButtonStyle,
   ButtonInteraction,
+  Guild,
+  MessageMentionOptions,
 } from "discord.js";
+import { resolveTags, resolveEmojiCodes } from "../announcements/index.js";
 import { pool } from "@workspace/db";
 
 // ─── Schema ───────────────────────────────────────────────────────────────────
@@ -188,6 +191,67 @@ export function buildDonateButtonRow(): ActionRowBuilder<ButtonBuilder> {
       .setEmoji("💚")
       .setStyle(ButtonStyle.Success),
   );
+}
+
+// ─── Resolve =ann-style tags/emojis in donation embed text and emit a ping ───
+// Discord embeds never trigger notifications, so we collect every role /
+// @everyone / @here / user mention found inside the resolved text and put a
+// tiny ping line in the message content (with allowedMentions) so the post
+// actually pings.
+export async function renderDonationPost(
+  rows: DonationEmbedRow[],
+  guild: Guild,
+): Promise<{ embeds: EmbedBuilder[]; content: string; allowedMentions: MessageMentionOptions }> {
+  if (rows.length === 0) {
+    return {
+      embeds: buildDonationPostEmbeds(rows),
+      content: "",
+      allowedMentions: { parse: [] },
+    };
+  }
+
+  const resolvedRows = await Promise.all(
+    rows.map(async (r) => {
+      let desc = r.description ?? "";
+      if (desc.trim()) {
+        desc = await resolveTags(desc, guild);
+        desc = await resolveEmojiCodes(desc, guild);
+      }
+      return { ...r, description: desc };
+    }),
+  );
+
+  const embeds = buildDonationPostEmbeds(resolvedRows);
+
+  const roleIds = new Set<string>();
+  const userIds = new Set<string>();
+  let hasEveryone = false;
+  let hasHere = false;
+
+  for (const r of resolvedRows) {
+    const text = r.description ?? "";
+    if (/@everyone\b/.test(text)) hasEveryone = true;
+    if (/@here\b/.test(text)) hasHere = true;
+    for (const m of text.matchAll(/<@&(\d{17,20})>/g)) roleIds.add(m[1]);
+    for (const m of text.matchAll(/<@!?(\d{17,20})>/g)) userIds.add(m[1]);
+  }
+
+  const pingParts: string[] = [];
+  if (hasEveryone) pingParts.push("@everyone");
+  if (hasHere) pingParts.push("@here");
+  for (const id of roleIds) pingParts.push(`<@&${id}>`);
+  for (const id of userIds) pingParts.push(`<@${id}>`);
+
+  const parse: ("everyone" | "roles" | "users")[] = [];
+  if (hasEveryone || hasHere) parse.push("everyone");
+  if (roleIds.size) parse.push("roles");
+  if (userIds.size) parse.push("users");
+
+  return {
+    embeds,
+    content: pingParts.length ? `-# ${pingParts.join(" ")}` : "",
+    allowedMentions: { parse },
+  };
 }
 
 // ─── Donation logs helper ─────────────────────────────────────────────────────

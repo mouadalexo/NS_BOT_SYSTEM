@@ -24,6 +24,7 @@ import {
   setPublishedDonationMessage,
   buildDonationPostEmbeds,
   buildDonateButtonRow,
+  renderDonationPost,
   type DonationEmbedRow,
 } from "../modules/money/index.js";
 
@@ -608,8 +609,13 @@ export async function handleMoneyConfirmPublish(interaction: ButtonInteraction):
     return;
   }
   const rows = await getDonationEmbeds(interaction.guild!.id);
-  const embeds = buildDonationPostEmbeds(rows);
-  const sent = await channel.send({ embeds, components: [buildDonateButtonRow()] });
+  const rendered = await renderDonationPost(rows, interaction.guild!);
+  const sent = await channel.send({
+    content: rendered.content || undefined,
+    embeds: rendered.embeds,
+    components: [buildDonateButtonRow()],
+    allowedMentions: rendered.allowedMentions,
+  });
   await setPublishedDonationMessage(interaction.guild!.id, channel.id, sent.id);
   setState(interaction.guild!.id, interaction.user.id, { kind: "idle" });
   await interaction.update({
@@ -633,14 +639,24 @@ export async function handleMoneyEditPosted(interaction: ButtonInteraction): Pro
   }
   const msg = await channel.messages.fetch(published.messageId).catch(() => null);
   const rows = await getDonationEmbeds(interaction.guild!.id);
-  const embeds = buildDonationPostEmbeds(rows);
+  const rendered = await renderDonationPost(rows, interaction.guild!);
   if (!msg) {
-    const sent = await channel.send({ embeds, components: [buildDonateButtonRow()] });
+    const sent = await channel.send({
+      content: rendered.content || undefined,
+      embeds: rendered.embeds,
+      components: [buildDonateButtonRow()],
+      allowedMentions: rendered.allowedMentions,
+    });
     await setPublishedDonationMessage(interaction.guild!.id, channel.id, sent.id);
     await interaction.reply({ content: `♻️ Original message was deleted — re-posted in <#${channel.id}>.`, ephemeral: true });
     return;
   }
-  await msg.edit({ embeds, components: [buildDonateButtonRow()] });
+  await msg.edit({
+    content: rendered.content || null,
+    embeds: rendered.embeds,
+    components: [buildDonateButtonRow()],
+    allowedMentions: rendered.allowedMentions,
+  });
   await interaction.reply({ content: `🔁 Updated the posted message in <#${channel.id}>.`, ephemeral: true });
 }
 

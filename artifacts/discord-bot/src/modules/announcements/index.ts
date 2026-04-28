@@ -52,7 +52,7 @@ async function getAnnPrefix(guildId: string): Promise<string> {
   return cfg?.pvsPrefix ?? "=";
 }
 
-async function resolveEmojiCodes(text: string, guild: Guild): Promise<string> {
+export async function resolveEmojiCodes(text: string, guild: Guild): Promise<string> {
   try { await guild.emojis.fetch(); } catch {}
   return text.replace(/;([a-zA-Z0-9_~]+)/g, (_match, name) => {
     const emoji =
@@ -529,7 +529,7 @@ async function openAnnSetupInChannel(message: Message, mode: "ann" | "event"): P
 }
 
 // ── =an inline announcement helpers ──────────────────────────────────────────
-async function resolveTags(text: string, guild: Guild): Promise<string> {
+export async function resolveTags(text: string, guild: Guild): Promise<string> {
   const tagPattern = /\[([^\]]+)\]/g;
   const matches: { match: string; name: string; index: number }[] = [];
   let m: RegExpExecArray | null;
