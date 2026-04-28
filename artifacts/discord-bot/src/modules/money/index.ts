@@ -390,33 +390,60 @@ async function deliverPaymentInfo(
 ): Promise<void> {
   const cfg = await getDonationConfig(state.guildId);
 
-  // Message 1 — payment info embed (clickable / copyable)
-  let infoEmbed: EmbedBuilder;
+  // Message 1 — a small header embed for context, then the raw payment
+  // detail as a PLAIN message so PayPal renders as a clickable link and
+  // RIB/IBAN code blocks can be tap-and-hold copied on mobile.
   if (method === "paypal" && cfg.paypalLink) {
     const url = cfg.paypalLink.startsWith("http") ? cfg.paypalLink : `https://${cfg.paypalLink}`;
-    infoEmbed = new EmbedBuilder()
-      .setColor(0x009cde)
-      .setTitle("💳 PayPal")
-      .setDescription(`Click the link below to pay:\n\n[**${cfg.paypalLink}**](${url})`)
-      .setFooter({ text: "Night Stars • Donations" });
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x009cde)
+          .setTitle("💳 PayPal")
+          .setDescription("Click the link below to pay:")
+          .setFooter({ text: "Night Stars • Donations" }),
+      ],
+    });
+    // Plain message — Discord auto-linkifies the URL and shows a preview.
+    await channel.send({ content: url, allowedMentions: { parse: [] } });
   } else if (method === "cih" && cfg.cihRib) {
-    infoEmbed = new EmbedBuilder()
-      .setColor(0x008753)
-      .setTitle("🏦 CIH Bank — RIB")
-      .setDescription("Tap the RIB below to copy it:\n\n```\n" + cfg.cihRib + "\n```")
-      .setFooter({ text: "Night Stars • Donations" });
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0x008753)
+          .setTitle("🏦 CIH Bank — RIB")
+          .setDescription("Tap the RIB below to copy it:")
+          .setFooter({ text: "Night Stars • Donations" }),
+      ],
+    });
+    // Plain message with code block — tap-and-hold to copy on mobile.
+    await channel.send({
+      content: "```\n" + cfg.cihRib + "\n```",
+      allowedMentions: { parse: [] },
+    });
   } else if (method === "spanish" && cfg.spanishIban) {
-    infoEmbed = new EmbedBuilder()
-      .setColor(0xc60b1e)
-      .setTitle("🏦 Spanish Bank Transfer — IBAN")
-      .setDescription("Tap the IBAN below to copy it:\n\n```\n" + cfg.spanishIban + "\n```")
-      .setFooter({ text: "Night Stars • Donations" });
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xc60b1e)
+          .setTitle("🏦 Spanish Bank Transfer — IBAN")
+          .setDescription("Tap the IBAN below to copy it:")
+          .setFooter({ text: "Night Stars • Donations" }),
+      ],
+    });
+    await channel.send({
+      content: "```\n" + cfg.spanishIban + "\n```",
+      allowedMentions: { parse: [] },
+    });
   } else {
-    infoEmbed = new EmbedBuilder()
-      .setColor(0xff4d4d)
-      .setDescription("⚠️ Payment info not available. Please contact the staff.");
+    await channel.send({
+      embeds: [
+        new EmbedBuilder()
+          .setColor(0xff4d4d)
+          .setDescription("⚠️ Payment info not available. Please contact the staff."),
+      ],
+    });
   }
-  await channel.send({ embeds: [infoEmbed] });
 
   // Message 2 — instruction
   await channel.send({
