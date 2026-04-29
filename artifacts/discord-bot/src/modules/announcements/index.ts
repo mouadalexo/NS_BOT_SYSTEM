@@ -344,6 +344,7 @@ function getAnnouncementOwnerId(customId: string): string | undefined {
 }
 
 function isAnnouncementCustomId(customId: string): boolean {
+  if (customId.startsWith("anb_")) return true;
   return (
     customId.startsWith("an_open:")           ||
     customId.startsWith("an_fill:")           ||
@@ -689,7 +690,9 @@ export function registerAnnouncementsModule(client: Client): void {
     const prefix = await getAnnPrefix(message.guild.id);
 
     if (raw === prefix + "ann" || raw.startsWith(prefix + "ann ")) {
-      await openAnnSetupInChannel(message, "ann");
+      const afterAnn = raw.slice((prefix + "ann").length).trim();
+      const editId = /^\d{17,20}$/.test(afterAnn) ? afterAnn : undefined;
+      await openAnnBuilderInChannel(message, editId);
       return;
     }
 
@@ -734,6 +737,20 @@ export function registerAnnouncementsModule(client: Client): void {
         await handleAnnButton(interaction as ButtonInteraction, client);
         return;
       }
+    }
+
+    // New ann builder (anb_) interactions
+    if (interaction.customId.startsWith("anb_")) {
+      const buid = interaction.customId.split(":")[1];
+      if (interaction.isButton() && interaction.user.id !== buid) {
+        await interaction.reply({ content: "\u274C This builder belongs to someone else.", ephemeral: true });
+        return;
+      }
+      await handleAnnBuilderInteraction(
+        interaction as ButtonInteraction | ModalSubmitInteraction,
+        client,
+      );
+      return;
     }
 
     if (interaction.isModalSubmit()) {
@@ -1202,5 +1219,491 @@ async function handleAnnColorModal(interaction: ModalSubmitInteraction, client: 
         components: buildSetupPanelComponents(state),
       });
     } catch {}
+  }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// NEW =ann MULTI-EMBED BUILDER
+// ════════════════════════════════════════════════════════════════════════════
+
+interface AnnBuilderSlot {
+  color: string;         // 6-char hex, no #  (e.g. "FFE500")
+  title: string;         // optional embed title
+  description: string;   // body — markdown, [tags], ;emojis all supported
+  imageUrl: string;      // big bottom image URL
+  thumbnailUrl: string;  // small top-right image URL
+}
+
+interface AnnBuilderState {
+  userId: string;
+  guildId: string;
+  channelId: string;
+  panelChannelId: string;
+  panelMessageId?: string;
+  slots: AnnBuilderSlot[];
+  tagOn: boolean;
+  editMessageId?: string;   // set when =ann <messageId> is used
+  lastActivity: number;
+  timeoutHandle?: NodeJS.Timeout;
+}
+
+const annBuilderState = new Map<string, AnnBuilderState>();
+
+function touchBuilderState(s: AnnBuilderState): void {
+  s.lastActivity = Date.now();
+  if (s.timeoutHandle) clearTimeout(s.timeoutHandle);
+  s.timeoutHandle = setTimeout(() => annBuilderState.delete(s.userId), 30 * 60 * 1000);
+}
+
+function normalizeAnnHeadings(text: string): string {
+  return text.split("\n").map((line) => {
+    const m = line.match(/^(\s*)(#{1,3})(?!\s|#)(\S.*)$/);
+    return m ? `${m[1]}${m[2]} ${m[3]}` : line;
+  }).join("\n");
+}
+
+function buildBuilderPanelEmbed(state: AnnBuilderState): EmbedBuilder {
+  const lines = state.slots.length
+    ? state.slots.map((s, i) => {
+        const col = `#${s.color}`;
+        const ti  = s.title ? ` — "${s.title.slice(0, 25)}${s.title.length > 25 ? "\u2026" : ""}"` : "";
+        const di  = (s.description || "*(empty)*").replace(/\n/g, " ").slice(0, 55);
+        const im  = [s.imageUrl ? "\uD83D\uDDBC\uFE0F" : "", s.thumbnailUrl ? "\uD83D\uDD33" : ""].filter(Boolean).join(" ");
+        return `**${i + 1}.** \`${col}\`${ti}\n\u2570 ${di}${im ? "  " + im : ""}`;
+      }).join("\n\n")
+    : "*No embeds yet — click Add Embed to start.*";
+
+  return new EmbedBuilder()
+    .setColor(0x5000ff)
+    .setTitle("\uD83D\uDCE3 Announcement Builder")
+    .setDescription(
+      (state.editMessageId
+        ? `\u270F\uFE0F Editing message \`${state.editMessageId}\`\n`
+        : "\uD83D\uDCE8 New announcement\n") +
+      `Tag @everyone: ${state.tagOn ? "\uD83D\uDFE2 ON" : "\uD83D\uDD34 OFF"}\n\n` +
+      lines,
+    )
+    .setFooter({ text: "Night Stars \u2022 Announcements" });
+}
+
+function buildBuilderPanelComponents(state: AnnBuilderState): ActionRowBuilder<ButtonBuilder>[] {
+  const uid      = state.userId;
+  const hasSlots = state.slots.length > 0;
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`anb_add:${uid}`).setLabel("\u2795 Add Embed").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`anb_edit:${uid}`).setLabel("\u270F\uFE0F Edit Embed").setStyle(ButtonStyle.Secondary).setDisabled(!hasSlots),
+      new ButtonBuilder().setCustomId(`anb_del:${uid}`).setLabel("\uD83D\uDDD1\uFE0F Delete").setStyle(ButtonStyle.Danger).setDisabled(!hasSlots),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`anb_tag:${uid}`)
+        .setLabel(state.tagOn ? "\uD83D\uDFE2 Tag: ON" : "\uD83D\uDD34 Tag: OFF")
+        .setStyle(state.tagOn ? ButtonStyle.Success : ButtonStyle.Danger),
+      new ButtonBuilder().setCustomId(`anb_preview:${uid}`).setLabel("\uD83D\uDC41\uFE0F Preview").setStyle(ButtonStyle.Secondary).setDisabled(!hasSlots),
+      new ButtonBuilder()
+        .setCustomId(`anb_send:${uid}`)
+        .setLabel(state.editMessageId ? "\u270F\uFE0F Update Message" : "\u2705 Send")
+        .setStyle(ButtonStyle.Success)
+        .setDisabled(!hasSlots),
+      new ButtonBuilder().setCustomId(`anb_cancel:${uid}`).setLabel("\u2716 Cancel").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function buildSlotPickerComponents(
+  uid: string,
+  slots: AnnBuilderSlot[],
+  action: "edit" | "del",
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  let cur = new ActionRowBuilder<ButtonBuilder>();
+  for (let i = 0; i < slots.length; i++) {
+    if (i > 0 && i % 5 === 0) {
+      rows.push(cur);
+      cur = new ActionRowBuilder<ButtonBuilder>();
+      if (rows.length >= 4) break;
+    }
+    const s     = slots[i];
+    const label = (s.title || s.description || `Embed ${i + 1}`).replace(/\n/g, " ").slice(0, 28);
+    cur.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`anb_${action}_pick:${uid}:${i}`)
+        .setLabel(`${i + 1}. ${label}`)
+        .setStyle(action === "del" ? ButtonStyle.Danger : ButtonStyle.Primary),
+    );
+  }
+  if (cur.components.length) rows.push(cur);
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`anb_back:${uid}`).setLabel("\u2190 Back").setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return rows;
+}
+
+function buildEmbedModal(
+  uid: string,
+  slotIdx: number | null,
+  prefill?: Partial<AnnBuilderSlot>,
+): ModalBuilder {
+  const isNew = slotIdx === null;
+  const modal = new ModalBuilder()
+    .setCustomId(isNew ? `anb_add_modal:${uid}` : `anb_edit_modal:${uid}:${slotIdx}`)
+    .setTitle(isNew ? "Add Embed" : `Edit Embed ${(slotIdx ?? 0) + 1}`);
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("color")
+        .setLabel("Color HEX (e.g. FFE500)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(7)
+        .setValue(prefill?.color ?? "5000FF"),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("title")
+        .setLabel("Title (optional)")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(256)
+        .setValue(prefill?.title ?? ""),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("description")
+        .setLabel("Description  ([Role] ;emoji ## heading supported)")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(false)
+        .setMaxLength(4000)
+        .setValue(prefill?.description ?? ""),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("image")
+        .setLabel("Big image URL (bottom) \u2014 optional")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(500)
+        .setValue(prefill?.imageUrl ?? ""),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("thumb")
+        .setLabel("Small image URL (top-right) \u2014 optional")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(false)
+        .setMaxLength(500)
+        .setValue(prefill?.thumbnailUrl ?? ""),
+    ),
+  );
+  return modal;
+}
+
+function parseSlotFromModal(interaction: ModalSubmitInteraction): AnnBuilderSlot {
+  const rawColor = interaction.fields.getTextInputValue("color").trim().replace(/^#/, "").toUpperCase();
+  const color    = /^[0-9A-F]{6}$/.test(rawColor) ? rawColor : "5000FF";
+  return {
+    color,
+    title:       interaction.fields.getTextInputValue("title").trim(),
+    description: interaction.fields.getTextInputValue("description").trim(),
+    imageUrl:    interaction.fields.getTextInputValue("image").trim(),
+    thumbnailUrl: interaction.fields.getTextInputValue("thumb").trim(),
+  };
+}
+
+async function refreshBuilderPanel(client: Client, state: AnnBuilderState): Promise<void> {
+  if (!state.panelMessageId) return;
+  try {
+    const ch  = await client.channels.fetch(state.panelChannelId).catch(() => null) as TextChannel | null;
+    const msg = await ch?.messages.fetch(state.panelMessageId).catch(() => null);
+    await msg?.edit({
+      embeds:     [buildBuilderPanelEmbed(state)],
+      components: buildBuilderPanelComponents(state),
+    });
+  } catch {}
+}
+
+export async function openAnnBuilderInChannel(message: Message, editMessageId?: string): Promise<void> {
+  const auth = await isAuthorized(message);
+  if (!auth.authorized) {
+    await tempReply(message, "\u274C You don\u2019t have permission to post announcements.");
+    return;
+  }
+  if (auth.eventHosterOnly) {
+    await tempReply(message, "\u274C You can only post events. Use `=event` instead.");
+    return;
+  }
+  const allowed = await getAllowedChannels(message.guild!.id);
+  if (allowed.length && !allowed.includes(message.channelId)) {
+    await tempReply(message, `\u274C Announcements can only be posted from: ${allowed.map((id) => `<#${id}>`).join(", ")}`);
+    return;
+  }
+
+  const state: AnnBuilderState = {
+    userId:         message.author.id,
+    guildId:        message.guild!.id,
+    channelId:      message.channelId,
+    panelChannelId: message.channelId,
+    slots:          [],
+    tagOn:          true,
+    editMessageId,
+    lastActivity:   Date.now(),
+  };
+
+  // Pre-load existing embeds when editing an old message
+  if (editMessageId) {
+    try {
+      const ch = message.channel as TextChannel;
+      const ex = await ch.messages.fetch(editMessageId).catch(() => null);
+      if (ex?.embeds?.length) {
+        for (const em of ex.embeds) {
+          state.slots.push({
+            color:        em.color != null ? em.color.toString(16).toUpperCase().padStart(6, "0") : "5000FF",
+            title:        em.title ?? "",
+            description:  em.description ?? "",
+            imageUrl:     em.image?.url ?? "",
+            thumbnailUrl: em.thumbnail?.url ?? "",
+          });
+        }
+      }
+    } catch {}
+  }
+
+  await message.delete().catch(() => {});
+  annBuilderState.set(state.userId, state);
+
+  const panel = await (message.channel as TextChannel).send({
+    embeds:     [buildBuilderPanelEmbed(state)],
+    components: buildBuilderPanelComponents(state),
+  });
+  state.panelMessageId = panel.id;
+  touchBuilderState(state);
+}
+
+async function handleAnnBuilderInteraction(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  client: Client,
+): Promise<void> {
+  const cid    = interaction.customId;
+  const parts  = cid.split(":");
+  const action = parts[0];
+  const uid    = parts[1];
+  const state  = annBuilderState.get(uid);
+
+  if (!state && action !== "anb_cancel") {
+    if (interaction.isButton()) {
+      await interaction.reply({ content: "\u274C Session expired. Run `=ann` again.", ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+  if (state) touchBuilderState(state);
+
+  // ── Add Embed → show modal ────────────────────────────────────────────────
+  if (action === "anb_add" && interaction.isButton()) {
+    await interaction.showModal(buildEmbedModal(uid, null));
+    return;
+  }
+
+  // ── Add modal submit ──────────────────────────────────────────────────────
+  if (action === "anb_add_modal" && interaction.isModalSubmit()) {
+    state!.slots.push(parseSlotFromModal(interaction as ModalSubmitInteraction));
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshBuilderPanel(client, state!);
+    return;
+  }
+
+  // ── Edit Embed ────────────────────────────────────────────────────────────
+  if (action === "anb_edit" && interaction.isButton()) {
+    if (state!.slots.length === 1) {
+      await interaction.showModal(buildEmbedModal(uid, 0, state!.slots[0]));
+    } else {
+      await interaction.update({
+        embeds:     [new EmbedBuilder().setColor(0x5000ff).setTitle("\u270F\uFE0F Pick an embed to edit").setFooter({ text: "Night Stars \u2022 Announcements" })],
+        components: buildSlotPickerComponents(uid, state!.slots, "edit"),
+      });
+    }
+    return;
+  }
+
+  // ── Edit pick → modal pre-filled ─────────────────────────────────────────
+  if (action === "anb_edit_pick" && interaction.isButton()) {
+    const idx = parseInt(parts[2], 10);
+    await interaction.showModal(buildEmbedModal(uid, idx, state!.slots[idx]));
+    return;
+  }
+
+  // ── Edit modal submit ─────────────────────────────────────────────────────
+  if (action === "anb_edit_modal" && interaction.isModalSubmit()) {
+    const idx = parseInt(parts[2], 10);
+    state!.slots[idx] = parseSlotFromModal(interaction as ModalSubmitInteraction);
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshBuilderPanel(client, state!);
+    return;
+  }
+
+  // ── Delete Embed ──────────────────────────────────────────────────────────
+  if (action === "anb_del" && interaction.isButton()) {
+    if (state!.slots.length === 1) {
+      state!.slots.splice(0, 1);
+      await interaction.update({ embeds: [buildBuilderPanelEmbed(state!)], components: buildBuilderPanelComponents(state!) });
+    } else {
+      await interaction.update({
+        embeds:     [new EmbedBuilder().setColor(0xff4d4d).setTitle("\uD83D\uDDD1\uFE0F Pick an embed to delete").setFooter({ text: "Night Stars \u2022 Announcements" })],
+        components: buildSlotPickerComponents(uid, state!.slots, "del"),
+      });
+    }
+    return;
+  }
+
+  // ── Delete pick ───────────────────────────────────────────────────────────
+  if (action === "anb_del_pick" && interaction.isButton()) {
+    const idx = parseInt(parts[2], 10);
+    state!.slots.splice(idx, 1);
+    await interaction.update({ embeds: [buildBuilderPanelEmbed(state!)], components: buildBuilderPanelComponents(state!) });
+    return;
+  }
+
+  // ── Back to main panel ────────────────────────────────────────────────────
+  if (action === "anb_back" && interaction.isButton()) {
+    await interaction.update({ embeds: [buildBuilderPanelEmbed(state!)], components: buildBuilderPanelComponents(state!) });
+    return;
+  }
+
+  // ── Toggle Tag ────────────────────────────────────────────────────────────
+  if (action === "anb_tag" && interaction.isButton()) {
+    state!.tagOn = !state!.tagOn;
+    await interaction.update({ embeds: [buildBuilderPanelEmbed(state!)], components: buildBuilderPanelComponents(state!) });
+    return;
+  }
+
+  // ── Preview (ephemeral) ───────────────────────────────────────────────────
+  if (action === "anb_preview" && interaction.isButton()) {
+    const guild = client.guilds.cache.get(state!.guildId);
+    if (!guild) { await interaction.reply({ content: "\u274C Guild not found.", ephemeral: true }); return; }
+    const resolved = await Promise.all(
+      state!.slots.map(async (s) => ({
+        ...s,
+        title:       s.title       ? await resolveEmojiCodes(await resolveTags(s.title, guild), guild)       : "",
+        description: s.description ? await resolveEmojiCodes(await resolveTags(s.description, guild), guild) : "",
+      })),
+    );
+    const embeds = resolved.map((s) => {
+      const color = parseInt(s.color, 16) || 0x5000ff;
+      const e = new EmbedBuilder().setColor(color);
+      if (s.title)       e.setTitle(s.title);
+      if (s.description) e.setDescription(normalizeAnnHeadings(s.description));
+      if (s.imageUrl && isValidUrl(s.imageUrl))       e.setImage(s.imageUrl);
+      if (s.thumbnailUrl && isValidUrl(s.thumbnailUrl)) e.setThumbnail(s.thumbnailUrl);
+      return e;
+    });
+    await interaction.reply({ embeds: embeds.slice(0, 10), ephemeral: true });
+    return;
+  }
+
+  // ── Send / Update ─────────────────────────────────────────────────────────
+  if (action === "anb_send" && interaction.isButton()) {
+    if (!state!.slots.length) {
+      await interaction.reply({ content: "\u274C Add at least one embed first.", ephemeral: true });
+      return;
+    }
+    annBuilderState.delete(uid);
+    if (state!.timeoutHandle) clearTimeout(state!.timeoutHandle);
+    await interaction.deferUpdate().catch(() => {});
+    if ((interaction as ButtonInteraction).message?.deletable) {
+      await (interaction as ButtonInteraction).message.delete().catch(() => {});
+    }
+
+    const guild = client.guilds.cache.get(state!.guildId);
+    if (!guild) return;
+
+    const resolved = await Promise.all(
+      state!.slots.map(async (s) => ({
+        ...s,
+        title:       s.title       ? await resolveEmojiCodes(await resolveTags(s.title, guild), guild)       : "",
+        description: s.description ? await resolveEmojiCodes(await resolveTags(s.description, guild), guild) : "",
+      })),
+    );
+    const embeds = resolved.map((s) => {
+      const color = parseInt(s.color, 16) || 0x5000ff;
+      const e = new EmbedBuilder().setColor(color);
+      if (s.title)       e.setTitle(s.title);
+      if (s.description) e.setDescription(normalizeAnnHeadings(s.description));
+      if (s.imageUrl && isValidUrl(s.imageUrl))       e.setImage(s.imageUrl);
+      if (s.thumbnailUrl && isValidUrl(s.thumbnailUrl)) e.setThumbnail(s.thumbnailUrl);
+      return e;
+    });
+
+    const allText = resolved.map((s) => `${s.title}\n${s.description}`).join("\n");
+    const voiceRows = buildVoiceChannelButtons(allText, guild);
+
+    const ch = await guild.channels.fetch(state!.channelId).catch(() => null) as TextChannel | null;
+    if (!ch) return;
+
+    if (state!.editMessageId) {
+      // Edit existing posted message
+      const existing = await ch.messages.fetch(state!.editMessageId).catch(() => null);
+      if (existing) {
+        await existing.edit({
+          embeds: embeds.slice(0, 10),
+          components: voiceRows.length ? voiceRows : [],
+          allowedMentions: { parse: [] },
+        });
+      }
+    } else {
+      // New announcement
+      if (state!.tagOn) {
+        const ping = await ch.send({ content: "@everyone", allowedMentions: { parse: ["everyone"] } });
+        setTimeout(() => ping.delete().catch(() => {}), 5000);
+      }
+      await ch.send({
+        embeds: embeds.slice(0, 10),
+        ...(voiceRows.length ? { components: voiceRows } : {}),
+        allowedMentions: { parse: [] },
+      });
+    }
+
+    // Log
+    const [cfg] = await db
+      .select({ annLogsChannelId: botConfigTable.annLogsChannelId })
+      .from(botConfigTable)
+      .where(eq(botConfigTable.guildId, state!.guildId))
+      .limit(1);
+    if (cfg?.annLogsChannelId) {
+      const logCh = await guild.channels.fetch(cfg.annLogsChannelId).catch(() => null) as TextChannel | null;
+      if (logCh) {
+        await logCh.send({
+          embeds: [
+            new EmbedBuilder()
+              .setColor(0x5000ff)
+              .setTitle(state!.editMessageId ? "\u270F\uFE0F Announcement Updated" : "\uD83D\uDCE3 Announcement Posted")
+              .addFields(
+                { name: "Posted by", value: `<@${uid}>`, inline: true },
+                { name: "Channel",   value: `<#${state!.channelId}>`, inline: true },
+                { name: "Embeds",    value: String(embeds.length), inline: true },
+              )
+              .setTimestamp()
+              .setFooter({ text: "Night Stars \u2022 Announcements" }),
+          ],
+        }).catch(() => {});
+      }
+    }
+    return;
+  }
+
+  // ── Cancel ────────────────────────────────────────────────────────────────
+  if (action === "anb_cancel" && interaction.isButton()) {
+    if (state) {
+      annBuilderState.delete(uid);
+      if (state.timeoutHandle) clearTimeout(state.timeoutHandle);
+    }
+    await interaction.update({
+      embeds:     [new EmbedBuilder().setColor(0x9aa0a6).setDescription("Announcement cancelled.")],
+      components: [],
+    }).catch(() => {});
+    setTimeout(() => (interaction as ButtonInteraction).message?.delete().catch(() => {}), 4000);
+    return;
   }
 }
