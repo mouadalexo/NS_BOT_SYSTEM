@@ -345,6 +345,7 @@ function getAnnouncementOwnerId(customId: string): string | undefined {
 
 function isAnnouncementCustomId(customId: string): boolean {
   if (customId.startsWith("anb_")) return true;
+  if (customId.startsWith("post_")) return true;
   return (
     customId.startsWith("an_open:")           ||
     customId.startsWith("an_fill:")           ||
@@ -701,6 +702,13 @@ export function registerAnnouncementsModule(client: Client): void {
       return;
     }
 
+    if (raw === prefix + "post" || raw.startsWith(prefix + "post ")) {
+      const afterPost = raw.slice((prefix + "post").length).trim();
+      const editId = /^\d{17,20}$/.test(afterPost) ? afterPost : undefined;
+      await openPostBuilderInChannel(message, editId);
+      return;
+    }
+
     if (raw === prefix + "an" || raw.startsWith(prefix + "an ")) {
       await handleInlineAnn(message, prefix);
       return;
@@ -737,6 +745,20 @@ export function registerAnnouncementsModule(client: Client): void {
         await handleAnnButton(interaction as ButtonInteraction, client);
         return;
       }
+    }
+
+    // Post builder (post_) interactions
+    if (interaction.customId.startsWith("post_")) {
+      const puid = interaction.customId.split(":")[1];
+      if (interaction.isButton() && interaction.user.id !== puid) {
+        await interaction.reply({ content: "\u274C This builder belongs to someone else.", ephemeral: true });
+        return;
+      }
+      await handlePostBuilderInteraction(
+        interaction as ButtonInteraction | ModalSubmitInteraction,
+        client,
+      );
+      return;
     }
 
     // New ann builder (anb_) interactions
@@ -965,8 +987,29 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
   // - Second click (already Saved this session): clear the panel back to empty
   //   so the user can start a fresh announcement.
   if (customId.startsWith("an_save:")) {
+    // For =event mode: always save to DB (no toggle/clear behaviour).
+    // To remove the template, the user empties all fields and clicks Save again
+    // — that saves an empty template which is then treated as "no template".
+    if (state.mode === "event") {
+      await persistSavedTemplate(state.guildId, "event", {
+        title: state.title,
+        description: state.description,
+        additional: state.additional,
+        modalImageUrl: state.modalImageUrl,
+        tagOn: state.tagOn,
+      }).catch(() => {});
+      state.savedThisSession = true;
+      state.hasSavedTemplate = !!state.description;
+      touchState(state);
+      await interaction.update({
+        embeds: [buildSetupPanelEmbed(state)],
+        components: buildSetupPanelComponents(state),
+      });
+      return;
+    }
+
+    // For =ann mode: keep the original toggle (save → then second click clears panel).
     if (state.savedThisSession) {
-      // Clear the panel state.
       state.title = "";
       state.description = "";
       state.additional = "";
@@ -974,8 +1017,6 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
       state.tagOn = true;
       state.filled = false;
       state.savedThisSession = false;
-      // Re-check if a saved template still exists (it does, unless the user
-      // wants to also wipe it — keep persistence so they can Load it again).
       const stillSaved = await loadSavedTemplate(state.guildId, state.mode).catch(() => null);
       state.hasSavedTemplate = !!stillSaved;
       touchState(state);
@@ -1042,6 +1083,18 @@ async function handleAnnButton(interaction: ButtonInteraction, client: Client): 
     if (!state.filled) {
       await interaction.reply({ content: "\u274C Please fill in the details first.", ephemeral: true });
       return;
+    }
+
+    // For =event: auto-save the current content as the persistent template
+    // so staff never need to re-type the same event text each time.
+    if (state.mode === "event") {
+      await persistSavedTemplate(state.guildId, "event", {
+        title: state.title,
+        description: state.description,
+        additional: state.additional,
+        modalImageUrl: state.modalImageUrl,
+        tagOn: state.tagOn,
+      }).catch(() => {});
     }
 
     annSetupState.delete(ownerId);
@@ -1294,7 +1347,6 @@ function buildBuilderPanelComponents(state: AnnBuilderState): ActionRowBuilder<B
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`anb_add:${uid}`).setLabel("\u2795 Add Embed").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`anb_edit:${uid}`).setLabel("\u270F\uFE0F Edit Embed").setStyle(ButtonStyle.Secondary).setDisabled(!hasSlots),
-      new ButtonBuilder().setCustomId(`anb_del:${uid}`).setLabel("\uD83D\uDDD1\uFE0F Delete").setStyle(ButtonStyle.Danger).setDisabled(!hasSlots),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder()
@@ -1374,7 +1426,7 @@ function buildEmbedModal(
     new ActionRowBuilder<TextInputBuilder>().addComponents(
       new TextInputBuilder()
         .setCustomId("description")
-        .setLabel("Description  ([Role] ;emoji ## heading supported)")
+        .setLabel("Description (tags, emojis, markdown)")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(false)
         .setMaxLength(4000)
@@ -1426,6 +1478,24 @@ async function refreshBuilderPanel(client: Client, state: AnnBuilderState): Prom
   } catch {}
 }
 
+// Search every text channel in the guild for a message by ID.
+// Returns [channel, message] if found, null otherwise.
+async function findMessageInGuild(
+  guild: Guild,
+  messageId: string,
+): Promise<[TextChannel, Message] | null> {
+  const channels = guild.channels.cache.filter(
+    (c) => c.isTextBased() && !c.isDMBased(),
+  );
+  for (const [, ch] of channels) {
+    try {
+      const msg = await (ch as TextChannel).messages.fetch(messageId).catch(() => null);
+      if (msg) return [ch as TextChannel, msg];
+    } catch {}
+  }
+  return null;
+}
+
 export async function openAnnBuilderInChannel(message: Message, editMessageId?: string): Promise<void> {
   const auth = await isAuthorized(message);
   if (!auth.authorized) {
@@ -1436,6 +1506,59 @@ export async function openAnnBuilderInChannel(message: Message, editMessageId?: 
     await tempReply(message, "\u274C You can only post events. Use `=event` instead.");
     return;
   }
+
+  // When editing: find the target message across all channels first,
+  // then use its channel as the announcement channel (bypasses the
+  // allowed-channels restriction that applies only to new posts).
+  let targetChannelId = message.channelId;
+
+  if (editMessageId) {
+    const found = await findMessageInGuild(message.guild!, editMessageId);
+    if (!found) {
+      await tempReply(message, "\u274C Could not find that message in this server. Make sure the ID is correct.");
+      return;
+    }
+    const [targetCh] = found;
+    targetChannelId = targetCh.id;
+
+    const state: AnnBuilderState = {
+      userId:         message.author.id,
+      guildId:        message.guild!.id,
+      channelId:      targetChannelId,
+      panelChannelId: message.channelId,
+      slots:          [],
+      tagOn:          false,   // no @everyone when editing
+      editMessageId,
+      lastActivity:   Date.now(),
+    };
+
+    // Pre-load all embeds from the found message
+    const [, existingMsg] = found;
+    if (existingMsg.embeds.length) {
+      for (const em of existingMsg.embeds) {
+        state.slots.push({
+          color:        em.color != null ? em.color.toString(16).toUpperCase().padStart(6, "0") : "5000FF",
+          title:        em.title ?? "",
+          description:  em.description ?? "",
+          imageUrl:     em.image?.url ?? "",
+          thumbnailUrl: em.thumbnail?.url ?? "",
+        });
+      }
+    }
+
+    await message.delete().catch(() => {});
+    annBuilderState.set(state.userId, state);
+
+    const panel = await (message.channel as TextChannel).send({
+      embeds:     [buildBuilderPanelEmbed(state)],
+      components: buildBuilderPanelComponents(state),
+    });
+    state.panelMessageId = panel.id;
+    touchBuilderState(state);
+    return;
+  }
+
+  // New announcement — enforce allowed channels
   const allowed = await getAllowedChannels(message.guild!.id);
   if (allowed.length && !allowed.includes(message.channelId)) {
     await tempReply(message, `\u274C Announcements can only be posted from: ${allowed.map((id) => `<#${id}>`).join(", ")}`);
@@ -1449,28 +1572,9 @@ export async function openAnnBuilderInChannel(message: Message, editMessageId?: 
     panelChannelId: message.channelId,
     slots:          [],
     tagOn:          true,
-    editMessageId,
+    editMessageId:  undefined,
     lastActivity:   Date.now(),
   };
-
-  // Pre-load existing embeds when editing an old message
-  if (editMessageId) {
-    try {
-      const ch = message.channel as TextChannel;
-      const ex = await ch.messages.fetch(editMessageId).catch(() => null);
-      if (ex?.embeds?.length) {
-        for (const em of ex.embeds) {
-          state.slots.push({
-            color:        em.color != null ? em.color.toString(16).toUpperCase().padStart(6, "0") : "5000FF",
-            title:        em.title ?? "",
-            description:  em.description ?? "",
-            imageUrl:     em.image?.url ?? "",
-            thumbnailUrl: em.thumbnail?.url ?? "",
-          });
-        }
-      }
-    } catch {}
-  }
 
   await message.delete().catch(() => {});
   annBuilderState.set(state.userId, state);
@@ -1706,4 +1810,414 @@ async function handleAnnBuilderInteraction(
     setTimeout(() => (interaction as ButtonInteraction).message?.delete().catch(() => {}), 4000);
     return;
   }
+}
+
+
+// ════════════════════════════════════════════════════════════════════════════
+// =post  SERVER MAP / INFO  BUILDER
+// ════════════════════════════════════════════════════════════════════════════
+
+interface PostEntry {
+  channelRef: string;  // raw input: "<#id>" or bare channel ID
+  description: string;
+}
+
+interface PostBuilderState {
+  userId: string;
+  guildId: string;
+  channelId: string;
+  panelChannelId: string;
+  panelMessageId?: string;
+  title: string;
+  imageUrl: string;
+  entries: PostEntry[];
+  footer: string;
+  editMessageId?: string;
+  lastActivity: number;
+  timeoutHandle?: NodeJS.Timeout;
+}
+
+const postBuilderState = new Map<string, PostBuilderState>();
+
+function touchPostState(s: PostBuilderState): void {
+  s.lastActivity = Date.now();
+  if (s.timeoutHandle) clearTimeout(s.timeoutHandle);
+  s.timeoutHandle = setTimeout(() => postBuilderState.delete(s.userId), 30 * 60 * 1000);
+}
+
+// Normalise a channel reference to "<#id>" format
+function normaliseChannelRef(raw: string): string {
+  const bare = raw.trim().replace(/^<#(\d+)>$/, "$1").replace(/\D/g, "");
+  return bare ? `<#${bare}>` : raw.trim();
+}
+
+function buildPostPanelEmbed(state: PostBuilderState): EmbedBuilder {
+  const titleLine  = state.title    ? `"${state.title.slice(0, 50)}${state.title.length > 50 ? "\u2026" : ""}"` : "*not set*";
+  const imageLine  = state.imageUrl ? "\u2705 Set" : "*not set*";
+  const footerLine = state.footer   ? `"${state.footer.slice(0, 60)}${state.footer.length > 60 ? "\u2026" : ""}"` : "*not set*";
+  const entryLines = state.entries.length
+    ? state.entries.map((e, i) => `**${i + 1}.** ${e.channelRef}\n\u2570 ${e.description.slice(0, 60)}`).join("\n\n")
+    : "*No entries yet — click Add Entry.*";
+
+  return new EmbedBuilder()
+    .setTitle("\uD83D\uDDFA\uFE0F Server Map Builder")
+    .setDescription(
+      (state.editMessageId
+        ? `\u270F\uFE0F Editing \`${state.editMessageId}\`\n`
+        : "\uD83D\uDCE8 New post\n") +
+      `**Title:** ${titleLine}\n**Image:** ${imageLine}\n**Footer:** ${footerLine}\n\n${entryLines}`,
+    )
+    .setFooter({ text: "Night Stars \u2022 Post Builder" });
+}
+
+function buildPostPanelComponents(state: PostBuilderState): ActionRowBuilder<ButtonBuilder>[] {
+  const uid      = state.userId;
+  const hasEntries = state.entries.length > 0;
+  return [
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`post_header:${uid}`).setLabel("\uD83D\uDCDD Set Title & Image").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_footer:${uid}`).setLabel("\uD83D\uDCCB Set Footer").setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`post_add:${uid}`).setLabel("\u2795 Add Entry").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`post_edit:${uid}`).setLabel("\u270F\uFE0F Edit Entry").setStyle(ButtonStyle.Secondary).setDisabled(!hasEntries),
+      new ButtonBuilder().setCustomId(`post_send:${uid}`).setLabel(state.editMessageId ? "\u270F\uFE0F Update" : "\u2705 Post").setStyle(ButtonStyle.Success).setDisabled(!hasEntries),
+      new ButtonBuilder().setCustomId(`post_cancel:${uid}`).setLabel("\u2716 Cancel").setStyle(ButtonStyle.Secondary),
+    ),
+  ];
+}
+
+function buildPostEntryPickerComponents(
+  uid: string,
+  entries: PostEntry[],
+  action: "edit",
+): ActionRowBuilder<ButtonBuilder>[] {
+  const rows: ActionRowBuilder<ButtonBuilder>[] = [];
+  let cur = new ActionRowBuilder<ButtonBuilder>();
+  for (let i = 0; i < entries.length; i++) {
+    if (i > 0 && i % 5 === 0) {
+      rows.push(cur);
+      cur = new ActionRowBuilder<ButtonBuilder>();
+      if (rows.length >= 4) break;
+    }
+    const label = (entries[i].description || entries[i].channelRef || `Entry ${i + 1}`).slice(0, 30);
+    cur.addComponents(
+      new ButtonBuilder()
+        .setCustomId(`post_${action}_pick:${uid}:${i}`)
+        .setLabel(`${i + 1}. ${label}`)
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+  if (cur.components.length) rows.push(cur);
+  rows.push(
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`post_back:${uid}`).setLabel("\u2190 Back").setStyle(ButtonStyle.Secondary),
+    ),
+  );
+  return rows;
+}
+
+async function refreshPostPanel(client: Client, state: PostBuilderState): Promise<void> {
+  if (!state.panelMessageId) return;
+  try {
+    const ch  = await client.channels.fetch(state.panelChannelId).catch(() => null) as TextChannel | null;
+    const msg = await ch?.messages.fetch(state.panelMessageId).catch(() => null);
+    await msg?.edit({ embeds: [buildPostPanelEmbed(state)], components: buildPostPanelComponents(state) });
+  } catch {}
+}
+
+export async function openPostBuilderInChannel(message: Message, editMessageId?: string): Promise<void> {
+  // Administrator only
+  const member = message.member;
+  const hasPerms =
+    member?.permissions.has(PermissionFlagsBits.Administrator);
+  if (!hasPerms) {
+    await tempReply(message, "\u274C You need Administrator permission to use `=post`.");
+    return;
+  }
+
+  // When editing: find the target message across all channels
+  let targetChannelId = message.channelId;
+  if (editMessageId) {
+    const found = await findMessageInGuild(message.guild!, editMessageId);
+    if (!found) {
+      await tempReply(message, "\u274C Could not find that message in this server. Make sure the ID is correct.");
+      return;
+    }
+    targetChannelId = found[0].id;
+  }
+
+  const state: PostBuilderState = {
+    userId:         message.author.id,
+    guildId:        message.guild!.id,
+    channelId:      targetChannelId,
+    panelChannelId: message.channelId,
+    title:          "",
+    imageUrl:       "",
+    entries:        [],
+    footer:         "",
+    editMessageId,
+    lastActivity:   Date.now(),
+  };
+
+  await message.delete().catch(() => {});
+  postBuilderState.set(state.userId, state);
+
+  const panel = await (message.channel as TextChannel).send({
+    embeds:     [buildPostPanelEmbed(state)],
+    components: buildPostPanelComponents(state),
+  });
+  state.panelMessageId = panel.id;
+  touchPostState(state);
+}
+
+async function handlePostBuilderInteraction(
+  interaction: ButtonInteraction | ModalSubmitInteraction,
+  client: Client,
+): Promise<void> {
+  const parts  = interaction.customId.split(":");
+  const action = parts[0];
+  const uid    = parts[1];
+  const state  = postBuilderState.get(uid);
+
+  if (!state && action !== "post_cancel") {
+    if (interaction.isButton()) {
+      await interaction.reply({ content: "\u274C Session expired. Run `=post` again.", ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+  if (state) touchPostState(state);
+
+  // ── Set Header (title + image) ────────────────────────────────────────────
+  if (action === "post_header" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_header_modal:${uid}`)
+      .setTitle("Set Title & Image");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("title")
+          .setLabel("Title text")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(256)
+          .setValue(state!.title),
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("image")
+          .setLabel("Image URL (appears below title)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(500)
+          .setValue(state!.imageUrl),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_header_modal" && interaction.isModalSubmit()) {
+    state!.title    = (interaction as ModalSubmitInteraction).fields.getTextInputValue("title").trim();
+    state!.imageUrl = (interaction as ModalSubmitInteraction).fields.getTextInputValue("image").trim();
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Set Footer ────────────────────────────────────────────────────────────
+  if (action === "post_footer" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_footer_modal:${uid}`)
+      .setTitle("Set Footer Text");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("footer")
+          .setLabel("Footer text (e.g. \u00A9 2026 Night Stars...)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(false)
+          .setMaxLength(200)
+          .setValue(state!.footer),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_footer_modal" && interaction.isModalSubmit()) {
+    state!.footer = (interaction as ModalSubmitInteraction).fields.getTextInputValue("footer").trim();
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Add Entry ─────────────────────────────────────────────────────────────
+  if (action === "post_add" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_add_modal:${uid}`)
+      .setTitle("Add Channel Entry");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("chan")
+          .setLabel("Channel ID (copy from Discord \u2014 right-click channel)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(30),
+      ),
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("desc")
+          .setLabel("Description")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(300),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_add_modal" && interaction.isModalSubmit()) {
+    const rawChan = (interaction as ModalSubmitInteraction).fields.getTextInputValue("chan").trim();
+    const desc    = (interaction as ModalSubmitInteraction).fields.getTextInputValue("desc").trim();
+    state!.entries.push({ channelRef: normaliseChannelRef(rawChan), description: desc });
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Edit Entry ────────────────────────────────────────────────────────────
+  if (action === "post_edit" && interaction.isButton()) {
+    if (state!.entries.length === 1) {
+      await openPostEntryModal(interaction, uid, 0, state!.entries[0]);
+    } else {
+      await interaction.update({
+        embeds:     [new EmbedBuilder().setTitle("\u270F\uFE0F Pick an entry to edit").setFooter({ text: "Night Stars \u2022 Post Builder" })],
+        components: buildPostEntryPickerComponents(uid, state!.entries, "edit"),
+      });
+    }
+    return;
+  }
+
+  if (action === "post_edit_pick" && interaction.isButton()) {
+    const idx = parseInt(parts[2], 10);
+    await openPostEntryModal(interaction, uid, idx, state!.entries[idx]);
+    return;
+  }
+
+  if (action === "post_edit_modal" && interaction.isModalSubmit()) {
+    const idx     = parseInt(parts[2], 10);
+    const rawChan = (interaction as ModalSubmitInteraction).fields.getTextInputValue("chan").trim();
+    const desc    = (interaction as ModalSubmitInteraction).fields.getTextInputValue("desc").trim();
+    state!.entries[idx] = { channelRef: normaliseChannelRef(rawChan), description: desc };
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Back ──────────────────────────────────────────────────────────────────
+  if (action === "post_back" && interaction.isButton()) {
+    await interaction.update({ embeds: [buildPostPanelEmbed(state!)], components: buildPostPanelComponents(state!) });
+    return;
+  }
+
+  // ── Post ──────────────────────────────────────────────────────────────────
+  if (action === "post_send" && interaction.isButton()) {
+    if (!state!.entries.length) {
+      await interaction.reply({ content: "\u274C Add at least one channel entry first.", ephemeral: true });
+      return;
+    }
+    postBuilderState.delete(uid);
+    if (state!.timeoutHandle) clearTimeout(state!.timeoutHandle);
+    await interaction.deferUpdate().catch(() => {});
+    if ((interaction as ButtonInteraction).message?.deletable) {
+      await (interaction as ButtonInteraction).message.delete().catch(() => {});
+    }
+
+    const ch = await client.channels.fetch(state!.channelId).catch(() => null) as TextChannel | null;
+    if (!ch) return;
+
+    // Visible separator between entries (also replaces "---" typed by user)
+    const SEP = "―――――――――――――――――――――――――――――――――――――――――――――";
+
+    // Build embed 1: title + image (no color = no sidebar)
+    const embed1 = new EmbedBuilder();
+    if (state!.title) embed1.setTitle(state!.title);
+    if (state!.imageUrl && isValidUrl(state!.imageUrl)) embed1.setImage(state!.imageUrl);
+
+    // Build embed 2: entries + footer
+    // "---" on its own line inside a description becomes a visual separator
+    const descLines = state!.entries.map((e) => {
+      const desc = e.description.replace(/^---$/gm, SEP);
+      return `${e.channelRef}\n\u21B3 ${desc}`;
+    }).join(`\n${SEP}\n`);
+    const embed2 = new EmbedBuilder().setDescription(descLines);
+    if (state!.footer) embed2.setFooter({ text: state!.footer });
+
+    const embeds = [embed1, embed2].filter(
+      (e) => e.data.title || e.data.image || e.data.description,
+    );
+
+    if (state!.editMessageId) {
+      // Edit the existing bot message
+      const existing = await ch.messages.fetch(state!.editMessageId).catch(() => null);
+      if (existing) {
+        await existing.edit({ embeds, allowedMentions: { parse: [] } });
+      } else {
+        // Fallback: post new if message no longer exists
+        await ch.send({ embeds, allowedMentions: { parse: [] } });
+      }
+    } else {
+      await ch.send({ embeds, allowedMentions: { parse: [] } });
+    }
+    return;
+  }
+
+  // ── Cancel ────────────────────────────────────────────────────────────────
+  if (action === "post_cancel" && interaction.isButton()) {
+    if (state) {
+      postBuilderState.delete(uid);
+      if (state.timeoutHandle) clearTimeout(state.timeoutHandle);
+    }
+    await interaction.update({
+      embeds:     [new EmbedBuilder().setDescription("Post cancelled.")],
+      components: [],
+    }).catch(() => {});
+    setTimeout(() => (interaction as ButtonInteraction).message?.delete().catch(() => {}), 4000);
+    return;
+  }
+}
+
+async function openPostEntryModal(
+  interaction: ButtonInteraction,
+  uid: string,
+  idx: number,
+  prefill?: PostEntry,
+): Promise<void> {
+  const modal = new ModalBuilder()
+    .setCustomId(`post_edit_modal:${uid}:${idx}`)
+    .setTitle(`Edit Entry ${idx + 1}`);
+  modal.addComponents(
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("chan")
+        .setLabel("Channel ID")
+        .setStyle(TextInputStyle.Short)
+        .setRequired(true)
+        .setMaxLength(30)
+        .setValue(prefill?.channelRef.replace(/[<>#]/g, "") ?? ""),
+    ),
+    new ActionRowBuilder<TextInputBuilder>().addComponents(
+      new TextInputBuilder()
+        .setCustomId("desc")
+        .setLabel("Description")
+        .setStyle(TextInputStyle.Paragraph)
+        .setRequired(true)
+        .setMaxLength(300)
+        .setValue(prefill?.description ?? ""),
+    ),
+  );
+  await interaction.showModal(modal);
 }
