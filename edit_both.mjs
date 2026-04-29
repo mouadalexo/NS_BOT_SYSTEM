@@ -20,9 +20,10 @@ const EMOJI_ARROW   = '<:arrowblancasincentro:1499052207419428875>';
 // hand-curated text from the server owner that must not be overwritten.
 const MESSAGES = [
   {
-    id: '1491858899769491466',
+    id: '1499059841908609164',
     title: '🗺️ ⌒ SERVER MAP 」',
-    skipTitleDivider: true,
+    skipTitleDivider: false,
+    noTitleUnderline: true,
     entries: [
       { id: '1488403300444536923', desc: 'Fin ki t7ato events o important announcements li khass ga3 members y tchekiwhom' },
       { id: '1487544817276682311', desc: 'Fin t9dr takhod roles d games li kt9sr gha b reactions' },
@@ -38,8 +39,9 @@ const MESSAGES = [
 function buildContainer(M) {
   const c = new ContainerBuilder().setAccentColor(COLOR);
 
-  // Title
-  c.addTextDisplayComponents((td) => td.setContent(`# __${M.title}__`));
+  // Title (underline only when not opted out)
+  const titleMd = M.noTitleUnderline ? `# ${M.title}` : `# __${M.title}__`;
+  c.addTextDisplayComponents((td) => td.setContent(titleMd));
   if (!M.skipTitleDivider) {
     c.addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   }
