@@ -15,6 +15,10 @@ import {
   ButtonInteraction,
   ModalSubmitInteraction,
   ChannelType,
+  ContainerBuilder,
+  MediaGalleryItemBuilder,
+  MessageFlags,
+  SeparatorSpacingSize,
 } from "discord.js";
 import { db } from "@workspace/db";
 import { botConfigTable } from "@workspace/db";
@@ -1814,11 +1818,14 @@ async function handleAnnBuilderInteraction(
 
 
 // ════════════════════════════════════════════════════════════════════════════
-// =post  SERVER MAP / INFO  BUILDER
+// =post  GENERAL POST BUILDER (Moon Night style)
 // ════════════════════════════════════════════════════════════════════════════
 
+const POST_COLOR = 0x4752C4;
+const POST_DEFAULT_FOOTER = "\u00A9 2026 Night Stars. All rights reserved.";
+
 interface PostEntry {
-  channelRef: string;  // raw input: "<#id>" or bare channel ID
+  channelRef: string;  // "<#id>"
   description: string;
 }
 
@@ -1833,6 +1840,7 @@ interface PostBuilderState {
   entries: PostEntry[];
   footer: string;
   editMessageId?: string;
+  awaitingImage?: boolean;
   lastActivity: number;
   timeoutHandle?: NodeJS.Timeout;
 }
@@ -1845,27 +1853,163 @@ function touchPostState(s: PostBuilderState): void {
   s.timeoutHandle = setTimeout(() => postBuilderState.delete(s.userId), 30 * 60 * 1000);
 }
 
-// Normalise a channel reference to "<#id>" format
 function normaliseChannelRef(raw: string): string {
   const bare = raw.trim().replace(/^<#(\d+)>$/, "$1").replace(/\D/g, "");
   return bare ? `<#${bare}>` : raw.trim();
 }
 
+// Try to parse a Components V2 (ContainerBuilder) post back into builder state.
+function parseV2Post(msg: Message): {
+  title: string; imageUrl: string; footer: string; entries: PostEntry[];
+} | null {
+  const top = (msg.components ?? []) as unknown as Array<Record<string, unknown>>;
+  const containerRaw = top.find((c) => {
+    const t = (c as { type?: number; data?: { type?: number } }).type
+      ?? (c as { data?: { type?: number } }).data?.type;
+    return t === 17;
+  });
+  if (!containerRaw) return null;
+
+  const c = containerRaw as { components?: unknown[]; data?: { components?: unknown[] } };
+  const items = (c.components ?? c.data?.components ?? []) as Array<Record<string, unknown>>;
+  if (!items.length) return null;
+
+  let title = "";
+  let imageUrl = "";
+  let footer = "";
+  const entries: PostEntry[] = [];
+
+  for (const it of items) {
+    const t = (it.type as number | undefined)
+      ?? ((it as { data?: { type?: number } }).data?.type);
+    if (t === 10) {
+      const content = (it.content as string | undefined)
+        ?? ((it as { data?: { content?: string } }).data?.content)
+        ?? "";
+      const titleM  = content.match(/^#\s*__(.+?)__\s*$/m);
+      const footerM = content.match(/^-#\s*`(.+?)`\s*$/m);
+      const entryM  = content.match(/^\u250A\u2192\s*<#(\d{17,20})>\s*\n\u21B3\s*`(.+?)`\s*$/);
+      if (entryM) {
+        entries.push({ channelRef: `<#${entryM[1]}>`, description: entryM[2] });
+      } else if (titleM && !title) {
+        title = titleM[1].trim();
+      } else if (footerM && entries.length > 0) {
+        footer = footerM[1].trim();
+      }
+    } else if (t === 12) {
+      const gallery = it as {
+        items?: Array<{ media?: { url?: string; proxy_url?: string } }>;
+        data?: { items?: Array<{ media?: { url?: string; proxy_url?: string } }> };
+      };
+      const mediaItems = gallery.items ?? gallery.data?.items ?? [];
+      const first = mediaItems[0];
+      if (first?.media?.url && !imageUrl) imageUrl = first.media.url;
+      else if (first?.media?.proxy_url && !imageUrl) imageUrl = first.media.proxy_url;
+    }
+  }
+
+  if (!entries.length && !title) return null;
+  return { title, imageUrl, footer, entries };
+}
+
+// Parse an existing Moon-Night-style post back into builder state.
+// Tries Components V2 first, then falls back to the old multi-embed format.
+function parseExistingPost(msg: Message): {
+  title: string; imageUrl: string; footer: string; entries: PostEntry[];
+} {
+  const v2 = parseV2Post(msg);
+  if (v2) return v2;
+
+  let title = "";
+  let imageUrl = "";
+  let footer = "";
+  const entries: PostEntry[] = [];
+
+  const e1 = msg.embeds[0];
+  if (e1) {
+    const desc = e1.description || "";
+    const m = desc.match(/^#\s*__(.+?)__\s*$/m);
+    if (m) title = m[1].trim();
+    else if (e1.title) title = e1.title;
+    if (e1.image?.url) imageUrl = e1.image.url;
+  }
+
+  // Look at remaining embeds for entries + footer
+  for (let i = 1; i < msg.embeds.length; i++) {
+    const e = msg.embeds[i];
+    if (e.footer?.text && !footer) footer = e.footer.text;
+    const d = e.description || "";
+    const re = /<#(\d{17,20})>\s*\n[\u21B3\u2570]\s*`?([^`\n]+?)`?\s*(?:\n|$)/g;
+    let mm: RegExpExecArray | null;
+    while ((mm = re.exec(d)) !== null) {
+      entries.push({ channelRef: `<#${mm[1]}>`, description: mm[2].trim() });
+    }
+  }
+
+  return { title, imageUrl, footer, entries };
+}
+
+// Build the Moon-Night-style Components V2 container for a post.
+function buildPostContainer(opts: {
+  title: string;
+  bannerName?: string;
+  bannerUrl?: string;
+  entries: PostEntry[];
+  footer: string;
+}): ContainerBuilder {
+  const c = new ContainerBuilder().setAccentColor(POST_COLOR);
+
+  // Title
+  c.addTextDisplayComponents((td) => td.setContent(`# __${opts.title}__`));
+  c.addSeparatorComponents((s) =>
+    s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+  );
+
+  // Optional banner
+  const mediaUrl = opts.bannerName ? `attachment://${opts.bannerName}` : opts.bannerUrl;
+  if (mediaUrl) {
+    c.addMediaGalleryComponents((mg) =>
+      mg.addItems(new MediaGalleryItemBuilder().setURL(mediaUrl)),
+    );
+    c.addSeparatorComponents((s) =>
+      s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+    );
+  }
+
+  // Entries (with a divider after each)
+  for (const e of opts.entries) {
+    const safeDesc = e.description.replace(/`/g, "\u02BC");
+    c.addTextDisplayComponents((td) =>
+      td.setContent(`\u250A\u2192 ${e.channelRef}\n\u21B3 \`${safeDesc}\``),
+    );
+    c.addSeparatorComponents((s) =>
+      s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+    );
+  }
+
+  // Footer (small subtext)
+  c.addTextDisplayComponents((td) => td.setContent(`-# \`${opts.footer}\``));
+
+  return c;
+}
+
 function buildPostPanelEmbed(state: PostBuilderState): EmbedBuilder {
   const titleLine  = state.title    ? `"${state.title.slice(0, 50)}${state.title.length > 50 ? "\u2026" : ""}"` : "*not set*";
   const imageLine  = state.imageUrl ? "\u2705 Set" : "*not set*";
-  const footerLine = state.footer   ? `"${state.footer.slice(0, 60)}${state.footer.length > 60 ? "\u2026" : ""}"` : "*not set*";
+  const footerLine = state.footer   ? `"${state.footer.slice(0, 60)}${state.footer.length > 60 ? "\u2026" : ""}"` : `*default: "${POST_DEFAULT_FOOTER}"*`;
   const entryLines = state.entries.length
     ? state.entries.map((e, i) => `**${i + 1}.** ${e.channelRef}\n\u2570 ${e.description.slice(0, 60)}`).join("\n\n")
-    : "*No entries yet — click Add Entry.*";
+    : "*No entries yet \u2014 click Add Entry.*";
 
   return new EmbedBuilder()
-    .setTitle("\uD83D\uDDFA\uFE0F Server Map Builder")
+    .setColor(POST_COLOR)
+    .setTitle("\u2728\uD83C\uDF19 Post Builder (Moon Night)")
     .setDescription(
       (state.editMessageId
         ? `\u270F\uFE0F Editing \`${state.editMessageId}\`\n`
         : "\uD83D\uDCE8 New post\n") +
-      `**Title:** ${titleLine}\n**Image:** ${imageLine}\n**Footer:** ${footerLine}\n\n${entryLines}`,
+      `**Title:** ${titleLine}\n**Image:** ${imageLine}\n**Footer:** ${footerLine}\n\n${entryLines}` +
+      (state.awaitingImage ? "\n\n\u23F3 *Waiting for image upload \u2014 send an image in this channel.*" : ""),
     )
     .setFooter({ text: "Night Stars \u2022 Post Builder" });
 }
@@ -1875,12 +2019,14 @@ function buildPostPanelComponents(state: PostBuilderState): ActionRowBuilder<But
   const hasEntries = state.entries.length > 0;
   return [
     new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`post_header:${uid}`).setLabel("\uD83D\uDCDD Set Title & Image").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`post_footer:${uid}`).setLabel("\uD83D\uDCCB Set Footer").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_header:${uid}`).setLabel("\uD83D\uDCDD Title & Image URL").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_upload:${uid}`).setLabel("\uD83D\uDCF7 Upload Image").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_footer:${uid}`).setLabel("\uD83D\uDCCB Footer").setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`post_add:${uid}`).setLabel("\u2795 Add Entry").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`post_edit:${uid}`).setLabel("\u270F\uFE0F Edit Entry").setStyle(ButtonStyle.Secondary).setDisabled(!hasEntries),
+      new ButtonBuilder().setCustomId(`post_delete:${uid}`).setLabel("\uD83D\uDDD1 Remove Entry").setStyle(ButtonStyle.Secondary).setDisabled(!hasEntries),
       new ButtonBuilder().setCustomId(`post_send:${uid}`).setLabel(state.editMessageId ? "\u270F\uFE0F Update" : "\u2705 Post").setStyle(ButtonStyle.Success).setDisabled(!hasEntries),
       new ButtonBuilder().setCustomId(`post_cancel:${uid}`).setLabel("\u2716 Cancel").setStyle(ButtonStyle.Secondary),
     ),
@@ -1890,7 +2036,7 @@ function buildPostPanelComponents(state: PostBuilderState): ActionRowBuilder<But
 function buildPostEntryPickerComponents(
   uid: string,
   entries: PostEntry[],
-  action: "edit",
+  action: "edit" | "delete",
 ): ActionRowBuilder<ButtonBuilder>[] {
   const rows: ActionRowBuilder<ButtonBuilder>[] = [];
   let cur = new ActionRowBuilder<ButtonBuilder>();
@@ -1905,7 +2051,7 @@ function buildPostEntryPickerComponents(
       new ButtonBuilder()
         .setCustomId(`post_${action}_pick:${uid}:${i}`)
         .setLabel(`${i + 1}. ${label}`)
-        .setStyle(ButtonStyle.Primary),
+        .setStyle(action === "delete" ? ButtonStyle.Danger : ButtonStyle.Primary),
     );
   }
   if (cur.components.length) rows.push(cur);
@@ -1927,17 +2073,15 @@ async function refreshPostPanel(client: Client, state: PostBuilderState): Promis
 }
 
 export async function openPostBuilderInChannel(message: Message, editMessageId?: string): Promise<void> {
-  // Administrator only
   const member = message.member;
-  const hasPerms =
-    member?.permissions.has(PermissionFlagsBits.Administrator);
-  if (!hasPerms) {
+  if (!member?.permissions.has(PermissionFlagsBits.Administrator)) {
     await tempReply(message, "\u274C You need Administrator permission to use `=post`.");
     return;
   }
 
-  // When editing: find the target message across all channels
   let targetChannelId = message.channelId;
+  let prefill = { title: "", imageUrl: "", footer: "", entries: [] as PostEntry[] };
+
   if (editMessageId) {
     const found = await findMessageInGuild(message.guild!, editMessageId);
     if (!found) {
@@ -1945,6 +2089,11 @@ export async function openPostBuilderInChannel(message: Message, editMessageId?:
       return;
     }
     targetChannelId = found[0].id;
+    if (found[1].author.id !== message.client.user!.id) {
+      await tempReply(message, "\u274C I can only edit messages that I posted myself.");
+      return;
+    }
+    prefill = parseExistingPost(found[1]);
   }
 
   const state: PostBuilderState = {
@@ -1952,10 +2101,10 @@ export async function openPostBuilderInChannel(message: Message, editMessageId?:
     guildId:        message.guild!.id,
     channelId:      targetChannelId,
     panelChannelId: message.channelId,
-    title:          "",
-    imageUrl:       "",
-    entries:        [],
-    footer:         "",
+    title:          prefill.title,
+    imageUrl:       prefill.imageUrl,
+    entries:        prefill.entries,
+    footer:         prefill.footer,
     editMessageId,
     lastActivity:   Date.now(),
   };
@@ -1988,25 +2137,25 @@ async function handlePostBuilderInteraction(
   }
   if (state) touchPostState(state);
 
-  // ── Set Header (title + image) ────────────────────────────────────────────
+  // ── Set Header (title + image URL) ────────────────────────────────────────
   if (action === "post_header" && interaction.isButton()) {
     const modal = new ModalBuilder()
       .setCustomId(`post_header_modal:${uid}`)
-      .setTitle("Set Title & Image");
+      .setTitle("Set Title & Image URL");
     modal.addComponents(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("title")
-          .setLabel("Title text")
+          .setLabel("Title (rendered as big underlined heading)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
-          .setMaxLength(256)
+          .setMaxLength(200)
           .setValue(state!.title),
       ),
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("image")
-          .setLabel("Image URL (appears below title)")
+          .setLabel("Image URL (or use Upload Image button)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setMaxLength(500)
@@ -2025,6 +2174,68 @@ async function handlePostBuilderInteraction(
     return;
   }
 
+  // ── Upload Image (collect next message attachment) ───────────────────────
+  if (action === "post_upload" && interaction.isButton()) {
+    if (state!.awaitingImage) {
+      await interaction.reply({ content: "\u23F3 Already waiting for an image \u2014 send one in this channel.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    state!.awaitingImage = true;
+    await interaction.reply({
+      content: "\uD83D\uDCF7 Send the image as an attachment in this channel within 60 seconds. Type `cancel` to abort.",
+      ephemeral: true,
+    }).catch(() => {});
+    await refreshPostPanel(client, state!);
+
+    const ch = await client.channels.fetch(state!.panelChannelId).catch(() => null) as TextChannel | null;
+    if (!ch) {
+      state!.awaitingImage = false;
+      await refreshPostPanel(client, state!);
+      return;
+    }
+    try {
+      const collected = await ch.awaitMessages({
+        filter: (m) => m.author.id === state!.userId,
+        max: 1,
+        time: 60_000,
+        errors: ["time"],
+      });
+      const m = collected.first();
+      if (!m) {
+        state!.awaitingImage = false;
+        await refreshPostPanel(client, state!);
+        return;
+      }
+      if (m.content.trim().toLowerCase() === "cancel") {
+        await m.delete().catch(() => {});
+        state!.awaitingImage = false;
+        await refreshPostPanel(client, state!);
+        await interaction.followUp({ content: "Cancelled.", ephemeral: true }).catch(() => {});
+        return;
+      }
+      const att = m.attachments.find(
+        (a) => (a.contentType ?? "").startsWith("image/") || /\.(png|jpe?g|gif|webp)$/i.test(a.name ?? ""),
+      );
+      if (!att) {
+        await m.delete().catch(() => {});
+        state!.awaitingImage = false;
+        await refreshPostPanel(client, state!);
+        await interaction.followUp({ content: "\u274C No image attachment found. Try again.", ephemeral: true }).catch(() => {});
+        return;
+      }
+      state!.imageUrl = att.url;
+      await m.delete().catch(() => {});
+      state!.awaitingImage = false;
+      await refreshPostPanel(client, state!);
+      await interaction.followUp({ content: "\u2705 Image set.", ephemeral: true }).catch(() => {});
+    } catch {
+      state!.awaitingImage = false;
+      await refreshPostPanel(client, state!);
+      await interaction.followUp({ content: "\u231B Image upload timed out.", ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+
   // ── Set Footer ────────────────────────────────────────────────────────────
   if (action === "post_footer" && interaction.isButton()) {
     const modal = new ModalBuilder()
@@ -2034,7 +2245,7 @@ async function handlePostBuilderInteraction(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("footer")
-          .setLabel("Footer text (e.g. \u00A9 2026 Night Stars...)")
+          .setLabel("Footer text (leave empty for default)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setMaxLength(200)
@@ -2061,7 +2272,7 @@ async function handlePostBuilderInteraction(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("chan")
-          .setLabel("Channel ID (copy from Discord \u2014 right-click channel)")
+          .setLabel("Channel ID (right-click channel \u2192 Copy ID)")
           .setStyle(TextInputStyle.Short)
           .setRequired(true)
           .setMaxLength(30),
@@ -2069,7 +2280,7 @@ async function handlePostBuilderInteraction(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("desc")
-          .setLabel("Description")
+          .setLabel("Description (shown in code-block style)")
           .setStyle(TextInputStyle.Paragraph)
           .setRequired(true)
           .setMaxLength(300),
@@ -2094,7 +2305,7 @@ async function handlePostBuilderInteraction(
       await openPostEntryModal(interaction, uid, 0, state!.entries[0]);
     } else {
       await interaction.update({
-        embeds:     [new EmbedBuilder().setTitle("\u270F\uFE0F Pick an entry to edit").setFooter({ text: "Night Stars \u2022 Post Builder" })],
+        embeds:     [new EmbedBuilder().setColor(POST_COLOR).setTitle("\u270F\uFE0F Pick an entry to edit").setFooter({ text: "Night Stars \u2022 Post Builder" })],
         components: buildPostEntryPickerComponents(uid, state!.entries, "edit"),
       });
     }
@@ -2117,61 +2328,158 @@ async function handlePostBuilderInteraction(
     return;
   }
 
+  // ── Delete Entry ──────────────────────────────────────────────────────────
+  if (action === "post_delete" && interaction.isButton()) {
+    if (state!.entries.length === 1) {
+      state!.entries.splice(0, 1);
+      await (interaction as ButtonInteraction).deferUpdate().catch(() => {});
+      await refreshPostPanel(client, state!);
+    } else {
+      await interaction.update({
+        embeds:     [new EmbedBuilder().setColor(0xff4d4d).setTitle("\uD83D\uDDD1 Pick an entry to remove").setFooter({ text: "Night Stars \u2022 Post Builder" })],
+        components: buildPostEntryPickerComponents(uid, state!.entries, "delete"),
+      });
+    }
+    return;
+  }
+
+  if (action === "post_delete_pick" && interaction.isButton()) {
+    const idx = parseInt(parts[2], 10);
+    if (idx >= 0 && idx < state!.entries.length) state!.entries.splice(idx, 1);
+    await interaction.update({ embeds: [buildPostPanelEmbed(state!)], components: buildPostPanelComponents(state!) });
+    return;
+  }
+
   // ── Back ──────────────────────────────────────────────────────────────────
   if (action === "post_back" && interaction.isButton()) {
     await interaction.update({ embeds: [buildPostPanelEmbed(state!)], components: buildPostPanelComponents(state!) });
     return;
   }
 
-  // ── Post ──────────────────────────────────────────────────────────────────
+  // ── Send / Update ─────────────────────────────────────────────────────────
   if (action === "post_send" && interaction.isButton()) {
     if (!state!.entries.length) {
       await interaction.reply({ content: "\u274C Add at least one channel entry first.", ephemeral: true });
       return;
     }
+    await interaction.deferUpdate().catch(() => {});
+
+    const ch = await client.channels.fetch(state!.channelId).catch(() => null) as TextChannel | null;
+    if (!ch) {
+      await interaction.followUp({ content: "\u274C Target channel not accessible.", ephemeral: true }).catch(() => {});
+      return;
+    }
+
+    const titleText  = state!.title  || "\u2728\uD83C\uDF19 Night Stars";
+    const footerText = state!.footer || POST_DEFAULT_FOOTER;
+
+    // Re-attach the image so the post is self-contained (URL won't break later)
+    let files: { attachment: Buffer; name: string }[] | undefined;
+    let bannerName: string | undefined;
+    let bannerFallbackUrl: string | undefined;
+    if (state!.imageUrl && isValidUrl(state!.imageUrl)) {
+      try {
+        const resp = await fetch(state!.imageUrl);
+        if (resp.ok) {
+          const buf = Buffer.from(await resp.arrayBuffer());
+          const ct  = (resp.headers.get("content-type") || "").toLowerCase();
+          let ext = "png";
+          if (ct.includes("jpeg") || ct.includes("jpg")) ext = "jpg";
+          else if (ct.includes("gif"))  ext = "gif";
+          else if (ct.includes("webp")) ext = "webp";
+          bannerName = `image.${ext}`;
+          files = [{ attachment: buf, name: bannerName }];
+        } else {
+          bannerFallbackUrl = state!.imageUrl;
+        }
+      } catch {
+        bannerFallbackUrl = state!.imageUrl;
+      }
+    }
+
+    // Components V2: ContainerBuilder with TextDisplay + Separator + MediaGallery
+    // gives a tight, divider-line look (no inter-embed gaps).
+    // Discord limit: max 40 components inside a Container.
+    // Each entry = 2 components (TextDisplay + Separator). Header takes
+    // up to 4 components (title + sep + media + sep), footer takes 1.
+    // → safe cap at 17 entries.
+    const MAX_ENTRIES = 17;
+    const entriesUsed = state!.entries.slice(0, MAX_ENTRIES);
+    const truncated   = state!.entries.length > MAX_ENTRIES;
+
+    const container = buildPostContainer({
+      title: titleText,
+      bannerName,
+      bannerUrl: bannerFallbackUrl,
+      entries: entriesUsed,
+      footer: footerText,
+    });
+
+    // Cast to `any` because discord.js BaseMessageOptions.flags has a
+     // restricted union type that doesn't include MessageFlags.IsComponentsV2,
+     // even though the runtime accepts it.
+     // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const v2Payload: any = {
+      flags: MessageFlags.IsComponentsV2,
+      components: [container],
+      files: files ?? [],
+      allowedMentions: { parse: [] as never[] },
+    };
+
+    try {
+      if (state!.editMessageId) {
+        const existing = await ch.messages.fetch(state!.editMessageId).catch(() => null);
+        if (existing) {
+          try {
+            await existing.edit({
+              ...v2Payload,
+              content: "",
+              embeds: [],
+              attachments: [],
+            });
+          } catch (editErr) {
+            // Old (non-V2) message that won't accept the V2 flag on edit:
+            // delete and resend so the user gets the new style.
+            if (existing.author.id === client.user!.id) {
+              await existing.delete().catch(() => {});
+              const sent = await ch.send(v2Payload);
+              await interaction.followUp({
+                content: `\u2139\uFE0F Original message couldn\u2019t be edited so I reposted it. New message ID: \`${sent.id}\``,
+                ephemeral: true,
+              }).catch(() => {});
+            } else {
+              throw editErr;
+            }
+          }
+        } else {
+          await ch.send(v2Payload);
+        }
+      } else {
+        await ch.send(v2Payload);
+      }
+      if (truncated) {
+        await interaction.followUp({
+          content: `\u26A0\uFE0F Only the first ${MAX_ENTRIES} entries were used (Discord component limit).`,
+          ephemeral: true,
+        }).catch(() => {});
+      }
+    } catch (err) {
+      await interaction.followUp({
+        content: `\u274C Failed to ${state!.editMessageId ? "update" : "send"}: ${(err as Error).message}`,
+        ephemeral: true,
+      }).catch(() => {});
+      return;
+    }
+
     postBuilderState.delete(uid);
     if (state!.timeoutHandle) clearTimeout(state!.timeoutHandle);
-    await interaction.deferUpdate().catch(() => {});
     if ((interaction as ButtonInteraction).message?.deletable) {
       await (interaction as ButtonInteraction).message.delete().catch(() => {});
     }
-
-    const ch = await client.channels.fetch(state!.channelId).catch(() => null) as TextChannel | null;
-    if (!ch) return;
-
-    // Visible separator between entries (also replaces "---" typed by user)
-    const SEP = "―――――――――――――――――――――――――――――――――――――――――――――";
-
-    // Build embed 1: title + image (no color = no sidebar)
-    const embed1 = new EmbedBuilder();
-    if (state!.title) embed1.setTitle(state!.title);
-    if (state!.imageUrl && isValidUrl(state!.imageUrl)) embed1.setImage(state!.imageUrl);
-
-    // Build embed 2: entries + footer
-    // "---" on its own line inside a description becomes a visual separator
-    const descLines = state!.entries.map((e) => {
-      const desc = e.description.replace(/^---$/gm, SEP);
-      return `${e.channelRef}\n\u21B3 ${desc}`;
-    }).join(`\n${SEP}\n`);
-    const embed2 = new EmbedBuilder().setDescription(descLines);
-    if (state!.footer) embed2.setFooter({ text: state!.footer });
-
-    const embeds = [embed1, embed2].filter(
-      (e) => e.data.title || e.data.image || e.data.description,
-    );
-
-    if (state!.editMessageId) {
-      // Edit the existing bot message
-      const existing = await ch.messages.fetch(state!.editMessageId).catch(() => null);
-      if (existing) {
-        await existing.edit({ embeds, allowedMentions: { parse: [] } });
-      } else {
-        // Fallback: post new if message no longer exists
-        await ch.send({ embeds, allowedMentions: { parse: [] } });
-      }
-    } else {
-      await ch.send({ embeds, allowedMentions: { parse: [] } });
-    }
+    await interaction.followUp({
+      content: state!.editMessageId ? "\u2705 Post updated." : `\u2705 Posted in <#${state!.channelId}>.`,
+      ephemeral: true,
+    }).catch(() => {});
     return;
   }
 
