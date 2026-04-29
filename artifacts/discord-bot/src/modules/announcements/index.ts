@@ -1823,6 +1823,8 @@ async function handleAnnBuilderInteraction(
 
 const POST_COLOR = 0x4752C4;
 const POST_DEFAULT_FOOTER = "\u00A9 2026 Night Stars. All rights reserved.";
+const POST_EMOJI_CHANNEL = "<a:channelutility:1499052204038819962>";
+const POST_EMOJI_ARROW   = "<:arrowblancasincentro:1499052207419428875>";
 
 interface PostEntry {
   channelRef: string;  // "<#id>"
@@ -1888,7 +1890,10 @@ function parseV2Post(msg: Message): {
         ?? "";
       const titleM  = content.match(/^#\s*__(.+?)__\s*$/m);
       const footerM = content.match(/^-#\s*`(.+?)`\s*$/m);
-      const entryM  = content.match(/^\u250A\u2192\s*<#(\d{17,20})>\s*\n\u21B3\s*`(.+?)`\s*$/);
+      // Match either the new emoji style or the old plain-symbol style.
+      const entryM  =
+        content.match(/<a?:[a-zA-Z0-9_]+:\d+>\s*\*\*\u21DD\s*<#(\d{17,20})>\*\*\s*\n<a?:[a-zA-Z0-9_]+:\d+>\s*`(.+?)`\s*$/) ||
+        content.match(/^\u250A\u2192\s*<#(\d{17,20})>\s*\n\u21B3\s*`(.+?)`\s*$/);
       if (entryM) {
         entries.push({ channelRef: `<#${entryM[1]}>`, description: entryM[2] });
       } else if (titleM && !title) {
@@ -1980,7 +1985,9 @@ function buildPostContainer(opts: {
   for (const e of opts.entries) {
     const safeDesc = e.description.replace(/`/g, "\u02BC");
     c.addTextDisplayComponents((td) =>
-      td.setContent(`\u250A\u2192 ${e.channelRef}\n\u21B3 \`${safeDesc}\``),
+      td.setContent(
+        `${POST_EMOJI_CHANNEL} **\u21DD ${e.channelRef}**\n${POST_EMOJI_ARROW} \`${safeDesc}\``,
+      ),
     );
     c.addSeparatorComponents((s) =>
       s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),

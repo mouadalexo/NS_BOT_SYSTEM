@@ -13,6 +13,8 @@ const COLOR = 0x4752C4;
 const FOOTER_TEXT = '© 2026 Night Stars. All rights reserved.';
 const BANNER_FILE = './moon_night_banner.png';
 const BANNER_NAME = 'moon.png';
+const EMOJI_CHANNEL = '<a:channelutility:1499052204038819962>';
+const EMOJI_ARROW   = '<:arrowblancasincentro:1499052207419428875>';
 
 const MESSAGES = [
   {
@@ -60,7 +62,7 @@ function buildContainer(M) {
   for (const e of M.entries) {
     const safeDesc = e.desc.replace(/`/g, 'ʼ');
     c.addTextDisplayComponents((td) =>
-      td.setContent(`┊→ <#${e.id}>\n↳ \`${safeDesc}\``),
+      td.setContent(`${EMOJI_CHANNEL} **⇝ <#${e.id}>**\n${EMOJI_ARROW} \`${safeDesc}\``),
     );
     c.addSeparatorComponents((s) => s.setDivider(true).setSpacing(SeparatorSpacingSize.Small));
   }
