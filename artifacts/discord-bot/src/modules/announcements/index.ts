@@ -19,10 +19,13 @@ import {
   MediaGalleryItemBuilder,
   MessageFlags,
   SeparatorSpacingSize,
+  StringSelectMenuBuilder,
+  StringSelectMenuInteraction,
+  Interaction,
 } from "discord.js";
 import { db } from "@workspace/db";
-import { botConfigTable } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { botConfigTable, postTemplatesTable } from "@workspace/db";
+import { and, eq } from "drizzle-orm";
 import { isMainGuild } from "../../utils/guildFilter.js";
 
 // ── Bold Unicode (Math Sans-Serif Bold — letters + digits) ────────────────────
@@ -721,7 +724,12 @@ export function registerAnnouncementsModule(client: Client): void {
 
   // ── Interactions ──────────────────────────────────────────────────────────
   client.on("interactionCreate", async (interaction) => {
-    const customId = interaction.isButton() || interaction.isModalSubmit() ? interaction.customId : "";
+    const customId =
+      interaction.isButton() ||
+      interaction.isModalSubmit() ||
+      interaction.isStringSelectMenu()
+        ? interaction.customId
+        : "";
     if (!customId || !isAnnouncementCustomId(customId)) return;
     const ownerId = getAnnouncementOwnerId(customId);
     const state = ownerId ? annSetupState.get(ownerId) : undefined;
@@ -752,14 +760,17 @@ export function registerAnnouncementsModule(client: Client): void {
     }
 
     // Post builder (post_) interactions
-    if (interaction.customId.startsWith("post_")) {
-      const puid = interaction.customId.split(":")[1];
-      if (interaction.isButton() && interaction.user.id !== puid) {
+    if (customId.startsWith("post_")) {
+      const puid = customId.split(":")[1];
+      if (
+        (interaction.isButton() || interaction.isStringSelectMenu()) &&
+        interaction.user.id !== puid
+      ) {
         await interaction.reply({ content: "\u274C This builder belongs to someone else.", ephemeral: true });
         return;
       }
       await handlePostBuilderInteraction(
-        interaction as ButtonInteraction | ModalSubmitInteraction,
+        interaction as ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction,
         client,
       );
       return;
@@ -1841,10 +1852,21 @@ interface PostBuilderState {
   imageUrl: string;
   entries: PostEntry[];
   footer: string;
+  color: number;
   editMessageId?: string;
   awaitingImage?: boolean;
   lastActivity: number;
   timeoutHandle?: NodeJS.Timeout;
+}
+
+function parseHexColor(raw: string): number | null {
+  const cleaned = raw.trim().replace(/^#/, "").replace(/^0x/i, "");
+  if (!/^[0-9a-fA-F]{6}$/.test(cleaned)) return null;
+  return parseInt(cleaned, 16);
+}
+
+function colorToHex(n: number): string {
+  return "#" + n.toString(16).padStart(6, "0").toUpperCase();
 }
 
 const postBuilderState = new Map<string, PostBuilderState>();
@@ -1862,7 +1884,7 @@ function normaliseChannelRef(raw: string): string {
 
 // Try to parse a Components V2 (ContainerBuilder) post back into builder state.
 function parseV2Post(msg: Message): {
-  title: string; imageUrl: string; footer: string; entries: PostEntry[];
+  title: string; imageUrl: string; footer: string; entries: PostEntry[]; color: number;
 } | null {
   const top = (msg.components ?? []) as unknown as Array<Record<string, unknown>>;
   const containerRaw = top.find((c) => {
@@ -1872,7 +1894,12 @@ function parseV2Post(msg: Message): {
   });
   if (!containerRaw) return null;
 
-  const c = containerRaw as { components?: unknown[]; data?: { components?: unknown[] } };
+  const c = containerRaw as {
+    components?: unknown[];
+    accent_color?: number;
+    accentColor?: number;
+    data?: { components?: unknown[]; accent_color?: number };
+  };
   const items = (c.components ?? c.data?.components ?? []) as Array<Record<string, unknown>>;
   if (!items.length) return null;
 
@@ -1880,6 +1907,7 @@ function parseV2Post(msg: Message): {
   let imageUrl = "";
   let footer = "";
   const entries: PostEntry[] = [];
+  const color = c.accentColor ?? c.accent_color ?? c.data?.accent_color ?? POST_COLOR;
 
   for (const it of items) {
     const t = (it.type as number | undefined)
@@ -1914,13 +1942,13 @@ function parseV2Post(msg: Message): {
   }
 
   if (!entries.length && !title) return null;
-  return { title, imageUrl, footer, entries };
+  return { title, imageUrl, footer, entries, color };
 }
 
-// Parse an existing Moon-Night-style post back into builder state.
+// Parse an existing post back into builder state.
 // Tries Components V2 first, then falls back to the old multi-embed format.
 function parseExistingPost(msg: Message): {
-  title: string; imageUrl: string; footer: string; entries: PostEntry[];
+  title: string; imageUrl: string; footer: string; entries: PostEntry[]; color: number;
 } {
   const v2 = parseV2Post(msg);
   if (v2) return v2;
@@ -1928,6 +1956,7 @@ function parseExistingPost(msg: Message): {
   let title = "";
   let imageUrl = "";
   let footer = "";
+  let color = POST_COLOR;
   const entries: PostEntry[] = [];
 
   const e1 = msg.embeds[0];
@@ -1937,6 +1966,7 @@ function parseExistingPost(msg: Message): {
     if (m) title = m[1].trim();
     else if (e1.title) title = e1.title;
     if (e1.image?.url) imageUrl = e1.image.url;
+    if (typeof e1.color === "number") color = e1.color;
   }
 
   // Look at remaining embeds for entries + footer
@@ -1951,24 +1981,28 @@ function parseExistingPost(msg: Message): {
     }
   }
 
-  return { title, imageUrl, footer, entries };
+  return { title, imageUrl, footer, entries, color };
 }
 
-// Build the Moon-Night-style Components V2 container for a post.
+// Build the Components V2 container for a post.
 function buildPostContainer(opts: {
   title: string;
   bannerName?: string;
   bannerUrl?: string;
   entries: PostEntry[];
   footer: string;
+  color?: number;
+  skipTitleDivider?: boolean;
 }): ContainerBuilder {
-  const c = new ContainerBuilder().setAccentColor(POST_COLOR);
+  const c = new ContainerBuilder().setAccentColor(opts.color ?? POST_COLOR);
 
   // Title
   c.addTextDisplayComponents((td) => td.setContent(`# __${opts.title}__`));
-  c.addSeparatorComponents((s) =>
-    s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),
-  );
+  if (!opts.skipTitleDivider) {
+    c.addSeparatorComponents((s) =>
+      s.setDivider(true).setSpacing(SeparatorSpacingSize.Small),
+    );
+  }
 
   // Optional banner
   const mediaUrl = opts.bannerName ? `attachment://${opts.bannerName}` : opts.bannerUrl;
@@ -1994,8 +2028,10 @@ function buildPostContainer(opts: {
     );
   }
 
-  // Footer (small subtext)
-  c.addTextDisplayComponents((td) => td.setContent(`-# \`${opts.footer}\``));
+  // Footer (small subtext) — only when set; empty footer shows nothing.
+  if (opts.footer && opts.footer.trim().length > 0) {
+    c.addTextDisplayComponents((td) => td.setContent(`-# \`${opts.footer}\``));
+  }
 
   return c;
 }
@@ -2003,22 +2039,23 @@ function buildPostContainer(opts: {
 function buildPostPanelEmbed(state: PostBuilderState): EmbedBuilder {
   const titleLine  = state.title    ? `"${state.title.slice(0, 50)}${state.title.length > 50 ? "\u2026" : ""}"` : "*not set*";
   const imageLine  = state.imageUrl ? "\u2705 Set" : "*not set*";
-  const footerLine = state.footer   ? `"${state.footer.slice(0, 60)}${state.footer.length > 60 ? "\u2026" : ""}"` : `*default: "${POST_DEFAULT_FOOTER}"*`;
+  const footerLine = state.footer   ? `"${state.footer.slice(0, 60)}${state.footer.length > 60 ? "\u2026" : ""}"` : "*none (empty)*";
+  const colorLine  = `\`${colorToHex(state.color)}\``;
   const entryLines = state.entries.length
     ? state.entries.map((e, i) => `**${i + 1}.** ${e.channelRef}\n\u2570 ${e.description.slice(0, 60)}`).join("\n\n")
-    : "*No entries yet \u2014 click Add Entry.*";
+    : "*No entries yet \u2014 use Add Entry or Bulk Add.*";
 
   return new EmbedBuilder()
-    .setColor(POST_COLOR)
-    .setTitle("\u2728\uD83C\uDF19 Post Builder (Moon Night)")
+    .setColor(state.color)
+    .setTitle("\u2728 Post Builder")
     .setDescription(
       (state.editMessageId
         ? `\u270F\uFE0F Editing \`${state.editMessageId}\`\n`
         : "\uD83D\uDCE8 New post\n") +
-      `**Title:** ${titleLine}\n**Image:** ${imageLine}\n**Footer:** ${footerLine}\n\n${entryLines}` +
+      `**Title:** ${titleLine}\n**Image:** ${imageLine}\n**Color:** ${colorLine}\n**Footer:** ${footerLine}\n\n${entryLines}` +
       (state.awaitingImage ? "\n\n\u23F3 *Waiting for image upload \u2014 send an image in this channel.*" : ""),
     )
-    .setFooter({ text: "Night Stars \u2022 Post Builder" });
+    .setFooter({ text: "Post Builder \u2022 Tip: use Templates to save & reuse posts" });
 }
 
 function buildPostPanelComponents(state: PostBuilderState): ActionRowBuilder<ButtonBuilder>[] {
@@ -2028,12 +2065,21 @@ function buildPostPanelComponents(state: PostBuilderState): ActionRowBuilder<But
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`post_header:${uid}`).setLabel("\uD83D\uDCDD Title & Image URL").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`post_upload:${uid}`).setLabel("\uD83D\uDCF7 Upload Image").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_color:${uid}`).setLabel("\uD83C\uDFA8 Color").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`post_footer:${uid}`).setLabel("\uD83D\uDCCB Footer").setStyle(ButtonStyle.Secondary),
     ),
     new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`post_add:${uid}`).setLabel("\u2795 Add Entry").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`post_bulk:${uid}`).setLabel("\uD83D\uDCDC Bulk Add").setStyle(ButtonStyle.Primary),
       new ButtonBuilder().setCustomId(`post_edit:${uid}`).setLabel("\u270F\uFE0F Edit Entry").setStyle(ButtonStyle.Secondary).setDisabled(!hasEntries),
       new ButtonBuilder().setCustomId(`post_delete:${uid}`).setLabel("\uD83D\uDDD1 Remove Entry").setStyle(ButtonStyle.Secondary).setDisabled(!hasEntries),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
+      new ButtonBuilder().setCustomId(`post_save:${uid}`).setLabel("\uD83D\uDCBE Save Template").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_load:${uid}`).setLabel("\uD83D\uDCC2 Load Template").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder().setCustomId(`post_deltpl:${uid}`).setLabel("\uD83D\uDDD1 Delete Template").setStyle(ButtonStyle.Secondary),
+    ),
+    new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`post_send:${uid}`).setLabel(state.editMessageId ? "\u270F\uFE0F Update" : "\u2705 Post").setStyle(ButtonStyle.Success).setDisabled(!hasEntries),
       new ButtonBuilder().setCustomId(`post_cancel:${uid}`).setLabel("\u2716 Cancel").setStyle(ButtonStyle.Secondary),
     ),
@@ -2087,7 +2133,7 @@ export async function openPostBuilderInChannel(message: Message, editMessageId?:
   }
 
   let targetChannelId = message.channelId;
-  let prefill = { title: "", imageUrl: "", footer: "", entries: [] as PostEntry[] };
+  let prefill = { title: "", imageUrl: "", footer: "", entries: [] as PostEntry[], color: POST_COLOR };
 
   if (editMessageId) {
     const found = await findMessageInGuild(message.guild!, editMessageId);
@@ -2112,6 +2158,7 @@ export async function openPostBuilderInChannel(message: Message, editMessageId?:
     imageUrl:       prefill.imageUrl,
     entries:        prefill.entries,
     footer:         prefill.footer,
+    color:          prefill.color,
     editMessageId,
     lastActivity:   Date.now(),
   };
@@ -2128,7 +2175,7 @@ export async function openPostBuilderInChannel(message: Message, editMessageId?:
 }
 
 async function handlePostBuilderInteraction(
-  interaction: ButtonInteraction | ModalSubmitInteraction,
+  interaction: ButtonInteraction | ModalSubmitInteraction | StringSelectMenuInteraction,
   client: Client,
 ): Promise<void> {
   const parts  = interaction.customId.split(":");
@@ -2137,7 +2184,7 @@ async function handlePostBuilderInteraction(
   const state  = postBuilderState.get(uid);
 
   if (!state && action !== "post_cancel") {
-    if (interaction.isButton()) {
+    if (interaction.isButton() || interaction.isStringSelectMenu()) {
       await interaction.reply({ content: "\u274C Session expired. Run `=post` again.", ephemeral: true }).catch(() => {});
     }
     return;
@@ -2252,7 +2299,7 @@ async function handlePostBuilderInteraction(
       new ActionRowBuilder<TextInputBuilder>().addComponents(
         new TextInputBuilder()
           .setCustomId("footer")
-          .setLabel("Footer text (leave empty for default)")
+          .setLabel("Footer text (leave empty for no footer)")
           .setStyle(TextInputStyle.Short)
           .setRequired(false)
           .setMaxLength(200)
@@ -2363,7 +2410,225 @@ async function handlePostBuilderInteraction(
     return;
   }
 
-  // ── Send / Update ─────────────────────────────────────────────────────────
+  // ── Color ─────────────────────────────────────────────────────────────────
+  if (action === "post_color" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_color_modal:${uid}`)
+      .setTitle("Set Accent Color");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("hex")
+          .setLabel("Hex color (e.g. #2B2D31, F5A623)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(9)
+          .setValue(colorToHex(state!.color)),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_color_modal" && interaction.isModalSubmit()) {
+    const raw = (interaction as ModalSubmitInteraction).fields.getTextInputValue("hex");
+    const parsed = parseHexColor(raw);
+    if (parsed === null) {
+      await interaction.reply({ content: "\u274C Invalid hex color. Use a 6-digit hex like `#2B2D31`.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    state!.color = parsed;
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Bulk Add ──────────────────────────────────────────────────────────────
+  if (action === "post_bulk" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_bulk_modal:${uid}`)
+      .setTitle("Bulk Add Entries");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("bulk")
+          .setLabel("One per line: <channel-id> | <description>")
+          .setStyle(TextInputStyle.Paragraph)
+          .setRequired(true)
+          .setMaxLength(4000)
+          .setPlaceholder("123456789012345678 | Welcome channel\n234567890123456789 | Rules"),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_bulk_modal" && interaction.isModalSubmit()) {
+    const raw = (interaction as ModalSubmitInteraction).fields.getTextInputValue("bulk");
+    const lines = raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+    let added = 0;
+    const skipped: string[] = [];
+    for (const line of lines) {
+      // Accept "<#id> | desc", "id | desc", "id desc", "id - desc", "id : desc"
+      const m = line.match(/^(?:<#)?(\d{17,20})>?\s*[|\-:\u2013\u2014]?\s*(.+)$/);
+      if (!m) { skipped.push(line); continue; }
+      const id = m[1];
+      const desc = m[2].trim();
+      if (!desc) { skipped.push(line); continue; }
+      state!.entries.push({ channelRef: `<#${id}>`, description: desc });
+      added++;
+    }
+    await (interaction as ModalSubmitInteraction).deferUpdate().catch(() => {});
+    await refreshPostPanel(client, state!);
+    if (added > 0 || skipped.length > 0) {
+      const msg = `\u2705 Added ${added} entr${added === 1 ? "y" : "ies"}.` +
+        (skipped.length ? ` \u26A0\uFE0F Skipped ${skipped.length} unparseable line${skipped.length === 1 ? "" : "s"}.` : "");
+      await (interaction as ModalSubmitInteraction).followUp({ content: msg, ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // ── Save Template ─────────────────────────────────────────────────────────
+  if (action === "post_save" && interaction.isButton()) {
+    const modal = new ModalBuilder()
+      .setCustomId(`post_save_modal:${uid}`)
+      .setTitle("Save Post Template");
+    modal.addComponents(
+      new ActionRowBuilder<TextInputBuilder>().addComponents(
+        new TextInputBuilder()
+          .setCustomId("name")
+          .setLabel("Template name (a-z, 0-9, _-, max 50)")
+          .setStyle(TextInputStyle.Short)
+          .setRequired(true)
+          .setMaxLength(50)
+          .setPlaceholder("e.g. server-map"),
+      ),
+    );
+    await interaction.showModal(modal);
+    return;
+  }
+
+  if (action === "post_save_modal" && interaction.isModalSubmit()) {
+    const rawName = (interaction as ModalSubmitInteraction).fields.getTextInputValue("name").trim().toLowerCase();
+    const name = rawName.replace(/[^a-z0-9_\-]/g, "-").slice(0, 50);
+    if (!name) {
+      await (interaction as ModalSubmitInteraction).reply({ content: "\u274C Invalid template name.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    try {
+      const payload = {
+        guildId: state!.guildId,
+        name,
+        title: state!.title,
+        imageUrl: state!.imageUrl,
+        footer: state!.footer,
+        color: state!.color,
+        entriesJson: JSON.stringify(state!.entries),
+        updatedBy: state!.userId,
+        updatedAt: new Date(),
+      };
+      await db.insert(postTemplatesTable).values(payload).onConflictDoUpdate({
+        target: [postTemplatesTable.guildId, postTemplatesTable.name],
+        set: {
+          title: payload.title,
+          imageUrl: payload.imageUrl,
+          footer: payload.footer,
+          color: payload.color,
+          entriesJson: payload.entriesJson,
+          updatedBy: payload.updatedBy,
+          updatedAt: payload.updatedAt,
+        },
+      });
+      await (interaction as ModalSubmitInteraction).reply({ content: `\u2705 Saved template \`${name}\`.`, ephemeral: true }).catch(() => {});
+    } catch (err) {
+      await (interaction as ModalSubmitInteraction).reply({ content: `\u274C Failed to save: ${(err as Error).message}`, ephemeral: true }).catch(() => {});
+    }
+    return;
+  }
+
+  // ── Load Template ─────────────────────────────────────────────────────────
+  if (action === "post_load" && interaction.isButton()) {
+    const rows = await db.select().from(postTemplatesTable)
+      .where(eq(postTemplatesTable.guildId, state!.guildId));
+    if (!rows.length) {
+      await interaction.reply({ content: "\u2139\uFE0F No saved templates yet. Use \uD83D\uDCBE Save Template first.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    const opts = rows.slice(0, 25).map((r) => ({
+      label: r.name.slice(0, 100),
+      value: r.name.slice(0, 100),
+      description: (r.title || "(untitled)").slice(0, 100),
+    }));
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`post_load_select:${uid}`)
+      .setPlaceholder("Pick a template to load")
+      .addOptions(opts);
+    await interaction.reply({
+      content: "\uD83D\uDCC2 Load template:",
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
+      ephemeral: true,
+    }).catch(() => {});
+    return;
+  }
+
+  if (action === "post_load_select" && interaction.isStringSelectMenu()) {
+    const name = interaction.values[0];
+    const rows = await db.select().from(postTemplatesTable).where(
+      and(eq(postTemplatesTable.guildId, state!.guildId), eq(postTemplatesTable.name, name)),
+    );
+    const tpl = rows[0];
+    if (!tpl) {
+      await interaction.update({ content: "\u274C Template not found.", components: [] }).catch(() => {});
+      return;
+    }
+    state!.title    = tpl.title    ?? "";
+    state!.imageUrl = tpl.imageUrl ?? "";
+    state!.footer   = tpl.footer   ?? "";
+    state!.color    = tpl.color    ?? POST_COLOR;
+    try {
+      state!.entries = JSON.parse(tpl.entriesJson ?? "[]") as PostEntry[];
+    } catch {
+      state!.entries = [];
+    }
+    await interaction.update({ content: `\u2705 Loaded \`${name}\`.`, components: [] }).catch(() => {});
+    await refreshPostPanel(client, state!);
+    return;
+  }
+
+  // ── Delete Template ───────────────────────────────────────────────────────
+  if (action === "post_deltpl" && interaction.isButton()) {
+    const rows = await db.select().from(postTemplatesTable)
+      .where(eq(postTemplatesTable.guildId, state!.guildId));
+    if (!rows.length) {
+      await interaction.reply({ content: "\u2139\uFE0F No saved templates to delete.", ephemeral: true }).catch(() => {});
+      return;
+    }
+    const opts = rows.slice(0, 25).map((r) => ({
+      label: r.name.slice(0, 100),
+      value: r.name.slice(0, 100),
+      description: (r.title || "(untitled)").slice(0, 100),
+    }));
+    const select = new StringSelectMenuBuilder()
+      .setCustomId(`post_deltpl_select:${uid}`)
+      .setPlaceholder("Pick a template to delete")
+      .addOptions(opts);
+    await interaction.reply({
+      content: "\uD83D\uDDD1 Delete template:",
+      components: [new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(select)],
+      ephemeral: true,
+    }).catch(() => {});
+    return;
+  }
+
+  if (action === "post_deltpl_select" && interaction.isStringSelectMenu()) {
+    const name = interaction.values[0];
+    await db.delete(postTemplatesTable).where(
+      and(eq(postTemplatesTable.guildId, state!.guildId), eq(postTemplatesTable.name, name)),
+    );
+    await interaction.update({ content: `\u2705 Deleted template \`${name}\`.`, components: [] }).catch(() => {});
+    return;
+  }
+
   if (action === "post_send" && interaction.isButton()) {
     if (!state!.entries.length) {
       await interaction.reply({ content: "\u274C Add at least one channel entry first.", ephemeral: true });
@@ -2378,7 +2643,8 @@ async function handlePostBuilderInteraction(
     }
 
     const titleText  = state!.title  || "\u2728\uD83C\uDF19 Night Stars";
-    const footerText = state!.footer || POST_DEFAULT_FOOTER;
+    // Empty footer means: no footer at all (not the default).
+    const footerText = state!.footer;
 
     // Re-attach the image so the post is self-contained (URL won't break later)
     let files: { attachment: Buffer; name: string }[] | undefined;
@@ -2420,6 +2686,7 @@ async function handlePostBuilderInteraction(
       bannerUrl: bannerFallbackUrl,
       entries: entriesUsed,
       footer: footerText,
+      color: state!.color,
     });
 
     // Cast to `any` because discord.js BaseMessageOptions.flags has a
